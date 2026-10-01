@@ -1,0 +1,8 @@
+.env
+.venv/
+.runtime/
+vendor/
+data/
+runs/
+reports/
+__pycache__/
