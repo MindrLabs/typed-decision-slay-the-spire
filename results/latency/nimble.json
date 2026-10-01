@@ -1,0 +1,18 @@
+{
+  "model": "nimble",
+  "per_request": {
+    "n": 1836,
+    "median_ms": 146.4,
+    "p95_ms": 186.7,
+    "mean_ms": 151.7
+  },
+  "per_decision": {
+    "n": 500,
+    "median_ms": 580.6,
+    "p95_ms": 739.1,
+    "mean_ms": 557.5
+  },
+  "requests_per_decision": 3.67,
+  "when": "2026-09-26T22:42:55Z",
+  "gpu": "NVIDIA GB10, 580.126.09"
+}

@@ -1,0 +1,361 @@
+From d386e2b6e551966df602f6c534a3bf611c6aa57c Mon Sep 17 00:00:00 2001
+From: kecan0406 <kecan0406@gmail.com>
+Date: Fri, 25 Sep 2026 06:28:43 +0000
+Subject: [PATCH 1/5] search: expose legal battle actions as
+ Action::enumerateActions
+
+BattleSearcher's private enumeration becomes the single source of truth that
+both the search and Python callers use (Action.enumerate_actions). MCTS play is
+unchanged: full-game fingerprints for seeds 1-5 match before and after.
+
+Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+---
+ bindings/slaythespire.cpp           |   5 +-
+ include/sim/search/Action.h         |   3 +
+ include/sim/search/BattleSearcher.h |   3 -
+ src/sim/search/Action.cpp           | 125 ++++++++++++++++++++++++++
+ src/sim/search/BattleSearcher.cpp   | 133 +---------------------------
+ 5 files changed, 136 insertions(+), 133 deletions(-)
+
+diff --git a/bindings/slaythespire.cpp b/bindings/slaythespire.cpp
+index 587065d..a9e7686 100644
+--- a/bindings/slaythespire.cpp
++++ b/bindings/slaythespire.cpp
+@@ -426,7 +426,10 @@ PYBIND11_MODULE(slaythespire, m) {
+         .def("is_valid_action", &search::Action::isValidAction, "bc"_a,
+             "whether this action is legal in bc. execute() asserts(false) (uncatchable SIGABRT) on an "
+             "invalid action under sts_asserts, so callers advancing a possibly-stale bc must gate "
+-            "execute() on this first.");
++            "execute() on this first.")
++        .def_static("enumerate_actions", &search::Action::enumerateActions, "bc"_a,
++            "every legal action in bc's decision state (PLAYER_NORMAL or CARD_SELECT), in the order "
++            "the battle search expands them; duplicate hand cards collapse to one action");
+ 
+     // BattleSearcher Node and Edge bindings
+     pybind11::class_<search::BattleSearcher::Node>(m, "BattleSearcherNode")
+diff --git a/include/sim/search/Action.h b/include/sim/search/Action.h
+index 45eba1b..f22deb0 100644
+--- a/include/sim/search/Action.h
++++ b/include/sim/search/Action.h
+@@ -57,6 +57,9 @@ namespace sts::search {
+         void execute(BattleContext &bc) const;
+ 
+ 
++        // Every legal action in a decision state (PLAYER_NORMAL or CARD_SELECT), in search order.
++        // Duplicate hand cards are collapsed to one action.
++        static std::vector<Action> enumerateActions(const BattleContext &bc);
+         static std::vector<Action> enumerateCardSelectActions(const BattleContext &bc);
+     };
+ 
+diff --git a/include/sim/search/BattleSearcher.h b/include/sim/search/BattleSearcher.h
+index e7ebfad..c82af1c 100644
+--- a/include/sim/search/BattleSearcher.h
++++ b/include/sim/search/BattleSearcher.h
+@@ -182,9 +182,6 @@ namespace sts::search {
+         void rolloutToEnd(BattleContext &state, std::vector<Action> &actionStack);
+ 
+         void enumerateActionsForNode(Node &node, const BattleContext &bc);
+-        void enumerateCardActions(Node &node, const BattleContext &bc);
+-        void enumeratePotionActions(Node &node, const BattleContext &bc);
+-        void enumerateCardSelectActions(Node &node, const BattleContext &bc);
+         Edge* selectChanceOutcome(Node &chance);
+         double evaluateEndState(const BattleContext &bc) const;
+ 
+diff --git a/src/sim/search/Action.cpp b/src/sim/search/Action.cpp
+index a5274c8..f84102b 100644
+--- a/src/sim/search/Action.cpp
++++ b/src/sim/search/Action.cpp
+@@ -3,7 +3,9 @@
+ //
+ 
+ #include "sim/search/Action.h"
++#include "sim/search/ExpertKnowledge.h"
+ 
++#include <algorithm>
+ #include <functional>
+ 
+ using namespace sts;
+@@ -499,6 +501,129 @@ void setupCardOptionsHelper(std::vector<search::Action> &actions, const ForwardI
+     }
+ }
+ 
++static std::vector<search::Action> enumerateCardActions(const BattleContext &bc) {
++    std::vector<search::Action> actions;
++    if (!bc.isCardPlayAllowed()) {
++        return actions;
++    }
++
++    fixed_list<std::pair<int,int>, 10> playableHandIdxs;
++    for (int handIdx = 0; handIdx < bc.cards.cardsInHand; ++handIdx) {
++        const auto &c = bc.cards.hand[handIdx];
++        if (!c.canUseOnAnyTarget(bc)) {
++            continue;
++        }
++
++        bool isUniqueAction = true;
++
++        if (handIdx > 0) {
++            const auto &lastCard = bc.cards.hand[handIdx-1];
++
++            bool isEqualToLastCard = c.id == lastCard.id &&
++                    c.getUpgradeCount() == lastCard.getUpgradeCount() &&
++                    // both should be less than deck size c.uniqueId < bc.cards.deck
++                    c.costForTurn == lastCard.costForTurn &&
++                    c.cost == lastCard.cost &&
++                    c.freeToPlayOnce == lastCard.freeToPlayOnce &&
++                    c.specialData == lastCard.specialData;
++
++            if (isEqualToLastCard) {
++                isUniqueAction = false;
++            }
++        }
++
++        if (isUniqueAction) {
++            playableHandIdxs.push_back( {handIdx, search::Expert::getPlayOrdering(c.getId())} );
++        }
++    }
++
++    std::sort(playableHandIdxs.begin(), playableHandIdxs.end(), [](auto a, auto b) { return a.second < b.second; });
++
++    for (auto pair : playableHandIdxs) {
++        const auto handIdx = pair.first;
++        const auto &c = bc.cards.hand[handIdx];
++
++        if (c.requiresTarget()) {
++            for (int tIdx = bc.monsters.monsterCount-1; tIdx >= 0; --tIdx) {
++                if (!bc.monsters.arr[tIdx].isTargetable()) {
++                    continue;
++                }
++                actions.push_back(search::Action(search::ActionType::CARD, handIdx, tIdx));
++            }
++        } else {
++            actions.push_back(search::Action(search::ActionType::CARD, handIdx));
++        }
++    }
++    return actions;
++}
++
++static void appendPotionActions(std::vector<search::Action> &actions, const BattleContext &bc) {
++
++    const auto hasValidTarget = bc.monsters.getTargetableCount() > 0;
++
++    int foundPotions = 0;
++    for (int pIdx = 0; pIdx < bc.potionCapacity; ++pIdx) {
++
++        const auto p = bc.potions[pIdx];
++        if (p == Potion::EMPTY_POTION_SLOT) {
++            continue;
++        }
++        ++foundPotions;
++
++        // not enumerating the discard of a potion if it can be used
++        if (p == Potion::FAIRY_POTION) {
++            actions.push_back(search::Action(search::ActionType::POTION, pIdx, -1));
++            continue;
++        }
++
++        // Offer only Smoke Bomb's discard when it can't flee -- the search otherwise over-picks
++        // the high-value escape and the live game rejects the "use" command.
++        if (p == Potion::SMOKE_BOMB && bc.smokeBombEscapeBlocked()) {
++            actions.push_back(search::Action(search::ActionType::POTION, pIdx, -1));
++            continue;
++        }
++
++        if (!potionRequiresTarget(p)) {
++            actions.push_back(search::Action(search::ActionType::POTION, pIdx));
++            continue;
++        }
++
++        // potion requires target
++        if (!hasValidTarget) {
++            actions.push_back(search::Action(search::ActionType::POTION, pIdx, -1));
++            continue;
++        }
++
++        // there is a valid target
++        for (int tIdx = 0; tIdx < bc.monsters.monsterCount; ++tIdx) {
++            if (bc.monsters.arr[tIdx].isTargetable()) {
++                actions.push_back(search::Action(search::ActionType::POTION, pIdx, tIdx));
++            }
++        }
++    }
++}
++
++std::vector<search::Action> search::Action::enumerateActions(const BattleContext &bc) {
++    switch (bc.inputState) {
++        case InputState::PLAYER_NORMAL: {
++            auto actions = enumerateCardActions(bc);
++            appendPotionActions(actions, bc);
++            actions.push_back(Action(ActionType::END_TURN));
++            return actions;
++        }
++
++        case InputState::CARD_SELECT:
++            return enumerateCardSelectActions(bc);
++
++        default:
++#ifdef sts_asserts
++            std::cerr << "enumerateActions: invalid input state: " << static_cast<int>(bc.inputState) << std::endl;
++            assert(false);
++#endif
++            return {};
++    }
++}
++
+ std::vector<search::Action> search::Action::enumerateCardSelectActions(const BattleContext &bc) {
+     std::vector<search::Action> actions;
+ 
+diff --git a/src/sim/search/BattleSearcher.cpp b/src/sim/search/BattleSearcher.cpp
+index 422217c..65f2fcd 100644
+--- a/src/sim/search/BattleSearcher.cpp
++++ b/src/sim/search/BattleSearcher.cpp
+@@ -633,23 +633,10 @@ search::BattleSearcher::Edge* search::BattleSearcher::selectChanceOutcome(search
+ 
+ void search::BattleSearcher::enumerateActionsForNode(search::BattleSearcher::Node &node,
+                                                                const BattleContext &bc) {
+-    switch (bc.inputState) {
+-        case InputState::PLAYER_NORMAL:
+-            enumerateCardActions(node, bc);
+-            enumeratePotionActions(node, bc);
+-            node.edges.push_back({Action(ActionType::END_TURN)});
+-            break;
+-
+-        case InputState::CARD_SELECT:
+-            enumerateCardSelectActions(node, bc);
+-            break;
+-
+-        default:
+-#ifdef sts_asserts
+-            std::cerr << "enumerateActionsForNode: invalid input state: " << static_cast<int>(bc.inputState) << std::endl;
+-            assert(false);
+-#endif
+-            break;
++    // Action::enumerateActions is the single source of truth for the legal actions of a decision
++    // state; the search just wraps each one in an edge.
++    for (const auto &a : Action::enumerateActions(bc)) {
++        node.edges.push_back({a});
+     }
+ 
+ #ifdef sts_print_debug
+@@ -661,118 +648,6 @@ void search::BattleSearcher::enumerateActionsForNode(search::BattleSearcher::Nod
+ #endif
+ }
+ 
+-void search::BattleSearcher::enumerateCardActions(search::BattleSearcher::Node &node,
+-                                                            const BattleContext &bc) {
+-    if (!bc.isCardPlayAllowed()) {
+-        return;
+-    }
+-
+-    fixed_list<std::pair<int,int>, 10> playableHandIdxs;
+-    for (int handIdx = 0; handIdx < bc.cards.cardsInHand; ++handIdx) {
+-        const auto &c = bc.cards.hand[handIdx];
+-        if (!c.canUseOnAnyTarget(bc)) {
+-            continue;
+-        }
+-
+-        bool isUniqueAction = true;
+-
+-        if (handIdx > 0) {
+-            const auto &lastCard = bc.cards.hand[handIdx-1];
+-
+-            bool isEqualToLastCard = c.id == lastCard.id &&
+-                    c.getUpgradeCount() == lastCard.getUpgradeCount() &&
+-                    // both should be less than deck size c.uniqueId < bc.cards.deck
+-                    c.costForTurn == lastCard.costForTurn &&
+-                    c.cost == lastCard.cost &&
+-                    c.freeToPlayOnce == lastCard.freeToPlayOnce &&
+-                    c.specialData == lastCard.specialData;
+-
+-            if (isEqualToLastCard) {
+-                isUniqueAction = false;
+-            }
+-        }
+-
+-        if (isUniqueAction) {
+-            playableHandIdxs.push_back( {handIdx, search::Expert::getPlayOrdering(c.getId())} );
+-        }
+-    }
+-
+-    std::sort(playableHandIdxs.begin(), playableHandIdxs.end(), [](auto a, auto b) { return a.second < b.second; });
+-
+-    for (auto pair : playableHandIdxs) {
+-        const auto handIdx = pair.first;
+-        const auto &c = bc.cards.hand[handIdx];
+-
+-        if (c.requiresTarget()) {
+-            for (int tIdx = bc.monsters.monsterCount-1; tIdx >= 0; --tIdx) {
+-                if (!bc.monsters.arr[tIdx].isTargetable()) {
+-                    continue;
+-                }
+-                node.edges.push_back({Action(ActionType::CARD, handIdx, tIdx)});
+-            }
+-        } else {
+-            node.edges.push_back({Action(ActionType::CARD, handIdx)});
+-        }
+-    }
+-
+-}
+-
+-void search::BattleSearcher::enumeratePotionActions(search::BattleSearcher::Node &node,
+-                                                              const BattleContext &bc) {
+-
+-    const auto hasValidTarget = bc.monsters.getTargetableCount() > 0;
+-
+-    int foundPotions = 0;
+-    for (int pIdx = 0; pIdx < bc.potionCapacity; ++pIdx) {
+-
+-        const auto p = bc.potions[pIdx];
+-        if (p == Potion::EMPTY_POTION_SLOT) {
+-            continue;
+-        }
+-        ++foundPotions;
+-
+-        // not enumerating the discard of a potion if it can be used
+-        if (p == Potion::FAIRY_POTION) {
+-            node.edges.push_back({Action(ActionType::POTION, pIdx, -1)});
+-            continue;
+-        }
+-
+-        // Offer only Smoke Bomb's discard when it can't flee -- the search otherwise over-picks
+-        // the high-value escape and the live game rejects the "use" command.
+-        if (p == Potion::SMOKE_BOMB && bc.smokeBombEscapeBlocked()) {
+-            node.edges.push_back({Action(ActionType::POTION, pIdx, -1)});
+-            continue;
+-        }
+-
+-        if (!potionRequiresTarget(p)) {
+-            node.edges.push_back({Action(ActionType::POTION, pIdx)});
+-            continue;
+-        }
+-
+-        // potion requires target
+-        if (!hasValidTarget) {
+-            node.edges.push_back({Action(ActionType::POTION, pIdx, -1)});
+-            continue;
+-        }
+-
+-        // there is a valid target
+-        for (int tIdx = 0; tIdx < bc.monsters.monsterCount; ++tIdx) {
+-            if (bc.monsters.arr[tIdx].isTargetable()) {
+-                node.edges.push_back({Action(ActionType::POTION, pIdx, tIdx)});
+-            }
+-        }
+-    }
+-}
+-
+-void search::BattleSearcher::enumerateCardSelectActions(search::BattleSearcher::Node &node,
+-                                                                  const BattleContext &bc) {
+-    // Action::enumerateCardSelectActions is the single source of truth for which selects a
+-    // card-select screen offers; the search just wraps each one in an edge.
+-    for (const auto &a : Action::enumerateCardSelectActions(bc)) {
+-        node.edges.push_back({a});
+-    }
+-}
+-
+ double getNonMinionMonsterCurHpRatio(const BattleContext &bc) {
+     int curHpTotal = 0;
+     int maxHpTotal = 0;
+-- 
+2.43.0
+

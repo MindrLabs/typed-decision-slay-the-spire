@@ -1,0 +1,29 @@
+From 7985a1d51e7cef19efb8284976838e299896ec6c Mon Sep 17 00:00:00 2001
+From: kecan0406 <kecan0406@gmail.com>
+Date: Fri, 25 Sep 2026 06:43:48 +0000
+Subject: [PATCH 5/5] bindings: expose discovery/codex offered cards
+
+Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+---
+ bindings/slaythespire.cpp | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/bindings/slaythespire.cpp b/bindings/slaythespire.cpp
+index 1ae695f..243ddd5 100644
+--- a/bindings/slaythespire.cpp
++++ b/bindings/slaythespire.cpp
+@@ -999,6 +999,11 @@ PYBIND11_MODULE(slaythespire, m) {
+     def_value(battleContext, "input_state", &BattleContext::inputState);
+     def_value(battleContext, "encounter", &BattleContext::encounter);
+     def_value(battleContext, "outcome", &BattleContext::outcome);
++    battleContext.def_property_readonly("card_select_generated_cards",
++        [](const BattleContext &bc) {
++            return std::vector<CardId>(bc.cardSelectInfo.cards.begin(), bc.cardSelectInfo.cards.end());
++        },
++        "the offered cards of a DISCOVERY / CODEX select (CardId.INVALID for unused slots)");
+     battleContext.def_property_readonly("card_select_task",
+         [](const BattleContext &bc) { return bc.cardSelectInfo.cardSelectTask; },
+         "the pending CARD_SELECT task (valid only when input_state == CARD_SELECT), so the bridge "
+-- 
+2.43.0
+

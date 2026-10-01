@@ -1,0 +1,34 @@
+From 1181baf89c08bef5484ba1a0c2911240c91bbf1e Mon Sep 17 00:00:00 2001
+From: kecan0406 <kecan0406@gmail.com>
+Date: Fri, 25 Sep 2026 06:37:47 +0000
+Subject: [PATCH 2/5] bindings: expose remaining event screen state (phase,
+ rewards, flags)
+
+Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+---
+ bindings/slaythespire.cpp | 9 ++++++++-
+ 1 file changed, 8 insertions(+), 1 deletion(-)
+
+diff --git a/bindings/slaythespire.cpp b/bindings/slaythespire.cpp
+index a9e7686..b9cd351 100644
+--- a/bindings/slaythespire.cpp
++++ b/bindings/slaythespire.cpp
+@@ -685,7 +685,14 @@ PYBIND11_MODULE(slaythespire, m) {
+         .def_readwrite("relicIdx1", &ScreenStateInfo::relicIdx1)
+         .def_readwrite("skillCardDeckIdx", &ScreenStateInfo::skillCardDeckIdx)
+         .def_readwrite("powerCardDeckIdx", &ScreenStateInfo::powerCardDeckIdx)
+-        .def_readwrite("attackCardDeckIdx", &ScreenStateInfo::attackCardDeckIdx);
++        .def_readwrite("attackCardDeckIdx", &ScreenStateInfo::attackCardDeckIdx)
++        .def_readwrite("phase", &ScreenStateInfo::phase)
++        .def_readwrite("upgradeOne", &ScreenStateInfo::upgradeOne)
++        .def_readwrite("cleanUpIsRemoveCard", &ScreenStateInfo::cleanUpIsRemoveCard)
++        .def_readwrite("stolenGold", &ScreenStateInfo::stolenGold)
++        .def_property_readonly("event_rewards", [](const ScreenStateInfo &s) {
++            return std::vector<int>(s.rewards.begin(), s.rewards.end());
++        }, "per-event reward permutation (e.g. Dead Adventurer's shuffled loot order)");
+ 
+     def_value(screenStateInfo, "encounter", &ScreenStateInfo::encounter);
+     def_value(screenStateInfo, "select_screen_type", &ScreenStateInfo::selectScreenType);
+-- 
+2.43.0
+

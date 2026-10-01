@@ -1,0 +1,27 @@
+From f7da07d1e32c4f85f4cd4c35b639414b91f9e243 Mon Sep 17 00:00:00 2001
+From: kecan0406 <kecan0406@gmail.com>
+Date: Fri, 25 Sep 2026 06:39:44 +0000
+Subject: [PATCH 3/5] bindings: expose GameContext.potions
+
+Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+---
+ bindings/slaythespire.cpp | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/bindings/slaythespire.cpp b/bindings/slaythespire.cpp
+index b9cd351..9a6282b 100644
+--- a/bindings/slaythespire.cpp
++++ b/bindings/slaythespire.cpp
+@@ -527,6 +527,9 @@ PYBIND11_MODULE(slaythespire, m) {
+         .def_readwrite("speedrun_pace", &GameContext::speedrunPace)
+         .def_readwrite("note_for_yourself_card", &GameContext::noteForYourselfCard)
+         .def_readwrite("potion_capacity", &GameContext::potionCapacity)
++        .def_property_readonly("potions", [](const GameContext &gc) {
++            return std::vector<Potion>(gc.potions.begin(), gc.potions.begin() + gc.potionCapacity);
++        }, "potion slots (EMPTY_POTION_SLOT for empty ones), potion_capacity long")
+         .def("create_battle_context", [](GameContext &gc) -> BattleContext* {
+             BattleContext *bc = new BattleContext();
+             bc->init(gc);
+-- 
+2.43.0
+

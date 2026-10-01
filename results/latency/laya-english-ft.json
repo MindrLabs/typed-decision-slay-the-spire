@@ -1,0 +1,18 @@
+{
+  "model": "laya-english-ft",
+  "per_request": {
+    "n": 1924,
+    "median_ms": 26.9,
+    "p95_ms": 48.9,
+    "mean_ms": 29.9
+  },
+  "per_decision": {
+    "n": 500,
+    "median_ms": 111.4,
+    "p95_ms": 168.5,
+    "mean_ms": 115.6
+  },
+  "requests_per_decision": 3.85,
+  "when": "2026-09-28T02:02:18Z",
+  "gpu": "NVIDIA GB10, 580.126.09"
+}

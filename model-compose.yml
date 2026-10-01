@@ -1,0 +1,154 @@
+controller:
+  adapter:
+    type: http-server
+    port: ${env.PORT | 8080}
+    base_path: /api
+  webui:
+    driver: gradio
+    port: ${env.SERVER_PORT | 8081}
+
+# One workflow per contestant, named as the runner's --player. Models load on their first request,
+# so only the ones a run asks for take memory.
+workflows:
+  - id: nimble
+    title: Bespoke Nimble-9B
+    description: Zero-shot typed decision (round 1).
+    job: { component: nimble, input: "${input}", output: "${output as json}" }
+
+  - id: laya-english
+    title: Laya english
+    description: Zero-shot typed decision (round 1).
+    job: { component: laya-english, input: "${input}", output: "${output as json}" }
+
+  - id: laya-typed
+    title: Laya typed-decisions
+    description: Zero-shot typed decision (round 1).
+    job: { component: laya-typed, input: "${input}", output: "${output as json}" }
+
+  - id: laya-multilingual
+    title: Laya multilingual
+    description: Zero-shot typed decision (round 1).
+    job: { component: laya-multilingual, input: "${input}", output: "${output as json}" }
+
+  - id: nimble-ft
+    title: Bespoke Nimble-9B, fine-tuned
+    description: Fine-tuned once on heart1's decisions (round 2).
+    job: { component: nimble-ft, input: "${input}", output: "${output as json}" }
+
+  - id: laya-english-ft
+    title: Laya english, fine-tuned
+    description: Fine-tuned once on heart1's decisions (round 2).
+    job: { component: laya-english-ft, input: "${input}", output: "${output as json}" }
+
+components:
+  - id: nimble
+    type: model
+    task: typed-decision
+    driver: custom
+    family: nimble
+    model:
+      provider: huggingface
+      repository: bespokelabs/Bespoke-Nimble-9B
+      revision: bd792f44ec8e265be861bfcdf4e05967ffe0e858
+    base_model:
+      provider: huggingface
+      repository: Qwen/Qwen3.5-9B
+      revision: c202236235762e1c871ad0ccb60c8ee5ba337b9a
+    max_seq_length: 4096
+    precision: bfloat16
+    preload: false
+    max_concurrent_count: 1
+    runtime:
+      type: virtualenv
+      path: .runtime/nimble
+    action: &action
+      text: ${input.text as text}
+      schema: ${input.schema as json}
+      return_probabilities: true
+
+  - id: nimble-ft
+    type: model
+    task: typed-decision
+    driver: custom
+    family: nimble
+    model:
+      provider: huggingface
+      repository: MindrLabs/sts-arena-nimble-ft
+      token: ${env.HF_TOKEN | }
+    base_model:
+      provider: huggingface
+      repository: Qwen/Qwen3.5-9B
+      revision: c202236235762e1c871ad0ccb60c8ee5ba337b9a
+    max_seq_length: 4096
+    precision: bfloat16
+    preload: false
+    max_concurrent_count: 1
+    runtime:
+      type: virtualenv
+      path: .runtime/nimble-ft
+    action: *action
+
+  - id: laya-english
+    type: model
+    task: typed-decision
+    driver: custom
+    family: laya
+    preset: english
+    max_head_length: 320
+    fast: false
+    preload: false
+    max_concurrent_count: 1
+    runtime:
+      type: virtualenv
+      path: .runtime/laya-english
+    action: *action
+
+  - id: laya-typed
+    type: model
+    task: typed-decision
+    driver: custom
+    family: laya
+    preset: typed-decisions
+    max_head_length: 320
+    fast: false
+    preload: false
+    max_concurrent_count: 1
+    runtime:
+      type: virtualenv
+      path: .runtime/laya-typed
+    action: *action
+
+  - id: laya-multilingual
+    type: model
+    task: typed-decision
+    driver: custom
+    family: laya
+    preset: multilingual
+    max_seq_length: 4096
+    max_head_length: 320
+    fast: false
+    preload: false
+    max_concurrent_count: 1
+    runtime:
+      type: virtualenv
+      path: .runtime/laya-multilingual
+    action: *action
+
+  - id: laya-english-ft
+    type: model
+    task: typed-decision
+    driver: custom
+    family: laya
+    preset: english
+    model:
+      provider: huggingface
+      repository: MindrLabs/sts-arena-laya-english-ft
+      token: ${env.HF_TOKEN | }
+    max_head_length: 320
+    fast: false
+    preload: false
+    max_concurrent_count: 1
+    runtime:
+      type: virtualenv
+      path: .runtime/laya-english-ft
+    action: *action

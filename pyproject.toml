@@ -1,0 +1,19 @@
+[project]
+name = "typed-decision-slay-the-spire"
+version = "0.1.0"
+description = "Typed-decision models (Bespoke Nimble-9B, Convai Laya) playing Slay the Spire on a headless simulator"
+requires-python = "==3.12.*"
+dependencies = [
+    "httpx==0.28.1",
+    "transformers==5.17.0",
+    "numpy==2.5.3",
+    "scipy==1.18.1",
+    "matplotlib==3.10.9",
+]
+
+[project.optional-dependencies]
+# heart1, the search-bot baseline: silverbot's policy network (vendor/sts_lightspeed/silverbot)
+baselines = ["torch==2.8.0", "pandas==2.3.3", "pyarrow==18.1.0", "tqdm==4.67.3"]
+
+[tool.uv]
+package = false
