@@ -30,3 +30,7 @@ How it will be read, decided now:
 - If Nimble-9B's lead over Laya english (and fine-tuned over fine-tuned) keeps an interval above zero, the registered conclusion also holds in Laya's documented format.
 - If an interval includes zero or flips, the README says the gap depends on the input format.
 - Either way every number is published, including runs that end worse for Laya.
+
+## Status
+
+2026-10-01: the three zero-shot Laya runs finished (200 seeds each, no errors); `results/laya-format/`, `scripts/laya_format.py`. The fine-tuned run (`laya-english-ft-rec`) was paused at 77 of 200 seeds and will resume from there; 20 of its games had failed while the model server was down and are replayed on resume. The README reports this run once all four are done.
