@@ -89,7 +89,7 @@ gradio 화면은 `http://localhost:8081`, HTTP API는 `http://localhost:8080/api
 | 게임 텍스트 | `fetch-game-text.sh`가 [spire-archive](https://github.com/nkhoit/spire-archive) `687e6dce`에서 파일 5개(카드, 유물, 포션, 이벤트, 몬스터)를 받고 sha256을 확인한다. 게임의 텍스트이므로 이 저장소에는 넣지 않았다 |
 | 시뮬레이터 | `setup-simulator.sh`가 [sts_lightspeed](https://github.com/daniel-ziegler/sts_lightspeed) `84ab3ead`를 받아 `patches/sts_dz`의 커밋 5개를 적용하고, uv로 러너용 `.venv`를 만든 뒤 `slaythespire` 파이썬 모듈을 빌드해 넣는다 |
 | 가상환경 | `setup-runtimes.sh`가 `runtimes/nimble.txt`, `runtimes/laya.txt`대로 모델마다 환경을 `.runtime/` 아래에 만든다(둘 다 torch 2.14.0) |
-| 체크포인트 | 모델은 첫 요청 때 올라온다. Nimble-9B는 어댑터(0.19GB)와 `Qwen/Qwen3.5-9B`(19.3GB)를 받아 한 번만 `~/.cache/models/nimble-merged`(18.8GB)로 병합한다. Laya 3종은 `convaiinnovations/laya`(2.4GB)를 함께 쓴다. 이 모델들은 토큰이 필요 없고, `HF_TOKEN`은 다운로드 속도 제한만 올려 준다 |
+| 체크포인트 | 모델은 첫 요청 때 올라온다. Nimble-9B는 어댑터(0.19GB)와 `Qwen/Qwen3.5-9B`(19.3GB)를 받아 한 번만 `~/.cache/models/nimble-merged`(18.8GB)로 병합한다. Laya 3종은 `convaiinnovations/laya`(2.4GB)를 함께 쓴다. 파인튜닝 모델은 `MindrLabs/sts-arena-nimble-ft`(1.3GB, 학습 중간 체크포인트 2개 포함)를 받아 같은 기반 모델에 병합하고(18.8GB 추가), `MindrLabs/sts-arena-laya-english-ft`(1.7GB)를 받는다. 토큰은 필요 없고, `HF_TOKEN`은 다운로드 속도 제한만 올려 준다 |
 
 결과에 나오는 탐색 봇 두 개는 모델 서버 없이 돈다:
 
@@ -162,7 +162,7 @@ curl localhost:8080/api/workflows/runs -H 'Content-Type: application/json' -d '{
 - **기준 플레이어.** heart1(전투 밖은 silverbot의 정책망, 전투는 시뮬레이터의 전투 탐색)과 mcts-heuristic(시뮬레이터의 휴리스틱과 전투 탐색)은 텍스트를 읽지 않고 같은 seed를 둔다. 탐색은 앞으로 뽑을 카드와 다른 무작위 결과를 읽지 않고 표본으로 뽑는다. 경쟁자가 아니라 규모를 보여 주는 상한선이다. random은 균등하게 무작위로 고른다.
 - **사전 등록.** 모델, seed, 설정, 주 비교, 통계 방법을 라운드마다 실행 전에 공개했다: [1라운드](https://gist.github.com/kecan0406/5816965b9711d07509ab91c291dda7d7), [2라운드](https://gist.github.com/kecan0406/aa20d9488e25d78ee508e2fe525d4c4d). 도달 층은 seed별로 짝지어 비교했다. 짝지은 bootstrap(10,000회)과 Wilcoxon 검정을 쓰고, 라운드마다 주 비교 세 개에 Holm 보정을 했다.
 
-이 저장소로 공개 결정을 그대로 다시 낼 수 있다. seed 1에서 무학습 모델 4종의 결정이 모두 같았고(Nimble-9B 207개, Laya english 134개, typed-decisions 124개, multilingual 13개), 탐색 봇 둘도 같은 층에서 끝났다. 단, `setup-runtimes.sh`를 먼저 돌려야 한다. 이 스크립트 없이 model-compose가 최신 패키지를 깔면 Laya english는 그대로 같았지만, Nimble-9B는 점수가 소수 셋째 자리에서 달라졌다. 그러자 13번째 결정에서 거의 동점이던 표 하나가 뒤집혔고, 게임이 다른 길로 갔다.
+이 저장소로 공개 결정을 그대로 다시 낼 수 있다. seed 1에서 무학습 모델 4종의 결정이 모두 같았고(Nimble-9B 207개, Laya english 134개, typed-decisions 124개, multilingual 13개), Hugging Face에서 받은 파인튜닝 모델 2종의 결정도 모두 같았다(Nimble-9B 274개, Laya english 368개). 탐색 봇 둘도 같은 층에서 끝났다. 단, `setup-runtimes.sh`를 먼저 돌려야 한다. 이 스크립트 없이 model-compose가 최신 패키지를 깔면 Laya english는 그대로 같았지만, Nimble-9B는 점수가 소수 셋째 자리에서 달라졌다. 그러자 13번째 결정에서 거의 동점이던 표 하나가 뒤집혔고, 게임이 다른 길로 갔다.
 
 ## 2 돌리는 데 드는 것
 
@@ -319,7 +319,7 @@ Nimble-9B는 여전히 1위이고 각 Laya 모델보다 높다. 사전 등록한
 | 이 저장소 | [`LICENSE`](LICENSE) (MIT) | ✓ |
 | `bespokelabs/Bespoke-Nimble-9B`, `Qwen/Qwen3.5-9B` 가중치 | Apache-2.0 | ✓ |
 | `convaiinnovations/laya` 가중치 | Apache-2.0 | ✓ |
-| `MindrLabs/sts-arena-*-ft` 가중치 | 각 모델 카드 참고 | 각 모델 카드 참고 |
+| `MindrLabs/sts-arena-*-ft` 가중치 | Apache-2.0 | ✓ |
 | sts_lightspeed(`setup-simulator.sh`가 빌드하는 시뮬레이터) | MIT | ✓ |
 | 게임 텍스트(`fetch-game-text.sh`가 받는 spire-archive) | 없음. Mega Crit의 것이며 이 저장소에 넣지 않았다 | ✗ |
 | 데모의 게임 화면 | Slay the Spire © Mega Crit | ✗ |

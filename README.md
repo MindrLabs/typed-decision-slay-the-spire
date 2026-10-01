@@ -89,7 +89,7 @@ The gradio interface opens on `http://localhost:8081` and the HTTP API on `http:
 | Game text | `fetch-game-text.sh` downloads five files (cards, relics, potions, events, monsters) from [spire-archive](https://github.com/nkhoit/spire-archive) at `687e6dce` and checks their sha256. The text belongs to the game, so this repository does not include it |
 | Simulator | `setup-simulator.sh` clones [sts_lightspeed](https://github.com/daniel-ziegler/sts_lightspeed) at `84ab3ead`, applies the five commits in `patches/sts_dz`, creates the runner's `.venv` with uv, and builds the `slaythespire` Python module into it |
 | Virtual environments | `setup-runtimes.sh` builds one environment per model under `.runtime/` from `runtimes/nimble.txt` and `runtimes/laya.txt` (torch 2.14.0 for both) |
-| Checkpoints | Each model loads on its first request. Nimble-9B downloads its adapter (0.19 GB) and `Qwen/Qwen3.5-9B` (19.3 GB) and merges them once into `~/.cache/models/nimble-merged` (18.8 GB). The three Laya models share `convaiinnovations/laya` (2.4 GB). No token is needed for these; `HF_TOKEN` only raises the download rate limit |
+| Checkpoints | Each model loads on its first request. Nimble-9B downloads its adapter (0.19 GB) and `Qwen/Qwen3.5-9B` (19.3 GB) and merges them once into `~/.cache/models/nimble-merged` (18.8 GB). The three Laya models share `convaiinnovations/laya` (2.4 GB). The fine-tuned models download `MindrLabs/sts-arena-nimble-ft` (1.3 GB, two training checkpoints included), merged onto the same base into another 18.8 GB, and `MindrLabs/sts-arena-laya-english-ft` (1.7 GB). No token is needed; `HF_TOKEN` only raises the download rate limit |
 
 The two search bots in the results play without a model server:
 
@@ -162,7 +162,7 @@ Table 2: Device and software
 - **Reference players.** heart1 (silverbot's policy network out of combat, the simulator's battle search in combat) and mcts-heuristic (the simulator's heuristic and battle search) play the same seeds without reading any text. Their search samples the cards still to be drawn and other random outcomes instead of reading them. They are a ceiling for scale, not competitors. random picks uniformly.
 - **Pre-registration.** The models, seeds, settings, primary comparisons and statistics were published before each round ran: [round 1](https://gist.github.com/kecan0406/5816965b9711d07509ab91c291dda7d7), [round 2](https://gist.github.com/kecan0406/aa20d9488e25d78ee508e2fe525d4c4d). Floors are compared seed by seed with a paired bootstrap (10,000 resamples) and a Wilcoxon test, Holm-corrected over each round's three primary comparisons.
 
-The published decisions replay exactly with this repository. On seed 1, every decision of the four zero-shot models came out the same (Nimble-9B 207, Laya english 134, typed-decisions 124, multilingual 13), and both search bots ended on the same floor. That needs `setup-runtimes.sh`: without it, model-compose installs newer packages, and while Laya english still matched, Nimble-9B's scores moved in the third decimal place, a near-tie vote flipped at decision 13, and the game went another way.
+The published decisions replay exactly with this repository. On seed 1, every decision of the four zero-shot models came out the same (Nimble-9B 207, Laya english 134, typed-decisions 124, multilingual 13), and so did every decision of the two fine-tuned models (Nimble-9B 274, Laya english 368, downloaded from Hugging Face); both search bots ended on the same floor. That needs `setup-runtimes.sh`: without it, model-compose installs newer packages, and while Laya english still matched, Nimble-9B's scores moved in the third decimal place, a near-tie vote flipped at decision 13, and the game went another way.
 
 ## 2 What it takes to run
 
@@ -319,7 +319,7 @@ Figure 5 (DGX Spark): Share of runs that reached each floor. Solid lines are fin
 | This repository | [`LICENSE`](LICENSE) (MIT) | ✓ |
 | `bespokelabs/Bespoke-Nimble-9B`, `Qwen/Qwen3.5-9B` weights | Apache-2.0 | ✓ |
 | `convaiinnovations/laya` weights | Apache-2.0 | ✓ |
-| `MindrLabs/sts-arena-*-ft` weights | see each model card | see each model card |
+| `MindrLabs/sts-arena-*-ft` weights | Apache-2.0 | ✓ |
 | sts_lightspeed (the simulator, built by `setup-simulator.sh`) | MIT | ✓ |
 | Game text (spire-archive, downloaded by `fetch-game-text.sh`) | none; it belongs to Mega Crit and is not included | ✗ |
 | Game footage in the demo | Slay the Spire © Mega Crit | ✗ |

@@ -74,7 +74,6 @@ components:
     model:
       provider: huggingface
       repository: MindrLabs/sts-arena-nimble-ft
-      token: ${env.HF_TOKEN | }
     base_model:
       provider: huggingface
       repository: Qwen/Qwen3.5-9B
@@ -143,7 +142,6 @@ components:
     model:
       provider: huggingface
       repository: MindrLabs/sts-arena-laya-english-ft
-      token: ${env.HF_TOKEN | }
     max_head_length: 320
     fast: false
     preload: false

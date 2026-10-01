@@ -89,7 +89,7 @@ gradio 界面在 `http://localhost:8081`，HTTP API 在 `http://localhost:8080/a
 | 游戏文本 | `fetch-game-text.sh` 从 [spire-archive](https://github.com/nkhoit/spire-archive) 的 `687e6dce` 下载 5 个文件（卡牌、遗物、药水、事件、怪物）并校验 sha256。这些文本属于游戏，因此本仓库不包含它们 |
 | 模拟器 | `setup-simulator.sh` 克隆 [sts_lightspeed](https://github.com/daniel-ziegler/sts_lightspeed) 的 `84ab3ead`，应用 `patches/sts_dz` 中的 5 个提交，用 uv 创建运行器的 `.venv`，并把 `slaythespire` Python 模块构建进去 |
 | 虚拟环境 | `setup-runtimes.sh` 按 `runtimes/nimble.txt` 和 `runtimes/laya.txt` 在 `.runtime/` 下为每个模型建一个环境（两者都是 torch 2.14.0） |
-| 检查点 | 每个模型在第一次请求时加载。Nimble-9B 下载适配器（0.19 GB）和 `Qwen/Qwen3.5-9B`（19.3 GB），只合并一次，存到 `~/.cache/models/nimble-merged`（18.8 GB）。三个 Laya 模型共用 `convaiinnovations/laya`（2.4 GB）。这些模型不需要 token，`HF_TOKEN` 只用于提高下载限速 |
+| 检查点 | 每个模型在第一次请求时加载。Nimble-9B 下载适配器（0.19 GB）和 `Qwen/Qwen3.5-9B`（19.3 GB），只合并一次，存到 `~/.cache/models/nimble-merged`（18.8 GB）。三个 Laya 模型共用 `convaiinnovations/laya`（2.4 GB）。微调模型下载 `MindrLabs/sts-arena-nimble-ft`（1.3 GB，含两个训练中间检查点），合并到同一基座上（另占 18.8 GB），以及 `MindrLabs/sts-arena-laya-english-ft`（1.7 GB）。不需要 token，`HF_TOKEN` 只用于提高下载限速 |
 
 结果中的两个搜索机器人不需要模型服务器：
 
@@ -162,7 +162,7 @@ curl localhost:8080/api/workflows/runs -H 'Content-Type: application/json' -d '{
 - **参考玩家。** heart1（战斗外用 silverbot 的策略网络，战斗中用模拟器的战斗搜索）和 mcts-heuristic（模拟器的启发式算法加战斗搜索）不读任何文本，打同样的种子。它们的搜索对尚未抽到的牌和其他随机结果进行采样，而不是直接读取。它们是用来衡量尺度的上限，不是竞争对手。random 均匀随机选择。
 - **预先登记。** 每轮运行前都公开了模型、种子、设置、主要比较和统计方法：[第 1 轮](https://gist.github.com/kecan0406/5816965b9711d07509ab91c291dda7d7)、[第 2 轮](https://gist.github.com/kecan0406/aa20d9488e25d78ee508e2fe525d4c4d)。层数按种子配对比较，使用配对 bootstrap（10,000 次重采样）和 Wilcoxon 检验，并对每轮的三个主要比较做 Holm 校正。
 
-用本仓库可以原样重现公开的决策。在种子 1 上，四个未训练模型的决策全部相同（Nimble-9B 207 个、Laya english 134 个、typed-decisions 124 个、multilingual 13 个），两个搜索机器人也停在同一层。前提是先运行 `setup-runtimes.sh`：不运行时 model-compose 会安装更新的软件包，Laya english 仍然一致，但 Nimble-9B 的分数在小数点后第三位发生变化，第 13 个决策中一张接近平票的投票翻转，游戏走向了另一条路。
+用本仓库可以原样重现公开的决策。在种子 1 上，四个未训练模型的决策全部相同（Nimble-9B 207 个、Laya english 134 个、typed-decisions 124 个、multilingual 13 个），从 Hugging Face 下载的两个微调模型的决策也全部相同（Nimble-9B 274 个、Laya english 368 个），两个搜索机器人也停在同一层。前提是先运行 `setup-runtimes.sh`：不运行时 model-compose 会安装更新的软件包，Laya english 仍然一致，但 Nimble-9B 的分数在小数点后第三位发生变化，第 13 个决策中一张接近平票的投票翻转，游戏走向了另一条路。
 
 ## 2 运行需要什么
 
@@ -319,7 +319,7 @@ Nimble-9B 仍是第一，并高于每个 Laya 模型。预先登记的检查（�
 | 本仓库 | [`LICENSE`](LICENSE)（MIT） | ✓ |
 | `bespokelabs/Bespoke-Nimble-9B`、`Qwen/Qwen3.5-9B` 权重 | Apache-2.0 | ✓ |
 | `convaiinnovations/laya` 权重 | Apache-2.0 | ✓ |
-| `MindrLabs/sts-arena-*-ft` 权重 | 见各模型卡片 | 见各模型卡片 |
+| `MindrLabs/sts-arena-*-ft` 权重 | Apache-2.0 | ✓ |
 | sts_lightspeed（`setup-simulator.sh` 构建的模拟器） | MIT | ✓ |
 | 游戏文本（`fetch-game-text.sh` 下载的 spire-archive） | 无；属于 Mega Crit，本仓库不包含 | ✗ |
 | 演示中的游戏画面 | Slay the Spire © Mega Crit | ✗ |
