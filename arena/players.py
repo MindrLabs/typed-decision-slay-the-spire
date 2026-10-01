@@ -66,7 +66,9 @@ class TypedDecisionPlayer:
         return orders
 
     def _ask(self, d: P.Decision, texts: list[str]) -> tuple[str, dict[str, float] | None]:
-        payload = P.laya_payload(d, texts) if self.family == "laya" else P.nimble_payload(d, texts)
+        return self._post(P.laya_payload(d, texts) if self.family == "laya" else P.nimble_payload(d, texts))
+
+    def _post(self, payload: dict) -> tuple[str, dict[str, float] | None]:
         for attempt in range(self.retries + 1):
             try:
                 r = self.client.post(f"{self.url}/workflows/runs", json={"workflow_id": self.name, "input": payload})
@@ -106,6 +108,34 @@ class TypedDecisionPlayer:
         return Choice(index, None, (time.perf_counter() - t0) * 1000, shortened, votes)
 
 
+class RotationPlayer(TypedDecisionPlayer):
+    """Laya asked the way Convai documents it (exploratory, docs/plan-laya-format.md): every rotation
+    of one seeded shuffle, each option keeping its key as Laya's `option_order` does, and the option
+    with the highest mean probability wins. Ties go to a seeded coin. `votes` records each
+    rotation's top option, so agreement is counted as for the registered vote."""
+
+    def choose(self, d: P.Decision) -> Choice:
+        texts, shortened = P.fitted_texts(d, RECOMMENDED_HEAD_BUDGET)
+        t0 = time.perf_counter()
+        n = len(texts)
+        base = self.rng.sample(range(n), n)
+        total, votes = [0.0] * n, []
+        for k in range(n):
+            order = base[k:] + base[:k]
+            payload = P.laya_payload(d, texts)
+            payload["schema"]["pick"]["criteria"] = {d.keys[i]: texts[i] for i in order}
+            key, scores = self._post(payload)
+            if not scores:
+                raise RuntimeError(f"{self.name}: no scores to average")
+            for i in range(n):
+                total[i] += scores[d.keys[i]]
+            votes.append(d.keys.index(key))
+        best = max(total)
+        index = self.rng.choice([i for i in range(n) if total[i] == best])
+        return Choice(index, {d.keys[i]: total[i] / n for i in range(n)}, (time.perf_counter() - t0) * 1000,
+                      shortened, votes)
+
+
 # model-compose.yml serves every model as a workflow named after the player.
 SERVER = os.environ.get("ARENA_SERVER", "http://127.0.0.1:8080/api")
 FAMILIES = {
@@ -113,9 +143,14 @@ FAMILIES = {
     # round 2: the same models fine-tuned on teacher decisions
     "laya-english-ft": "laya", "nimble-ft": "nimble",
 }
+# Laya in its documented format: larger input budgets (the -rec workflows) and rotation averaging.
+RECOMMENDED = ("laya-english-rec", "laya-typed-rec", "laya-multilingual-rec", "laya-english-ft-rec")
+RECOMMENDED_HEAD_BUDGET = 512
 
 
 def make_player(name: str, seed: int, perms: int = 1):
     if name == "random":
         return RandomPlayer(seed)
+    if name in RECOMMENDED:
+        return RotationPlayer(name, SERVER, "laya", seed)
     return TypedDecisionPlayer(name, SERVER, FAMILIES[name], seed, perms)

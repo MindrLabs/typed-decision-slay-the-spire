@@ -40,6 +40,26 @@ workflows:
     description: Fine-tuned once on heart1's decisions (round 2).
     job: { component: laya-english-ft, input: "${input}", output: "${output as json}" }
 
+  - id: laya-english-rec
+    title: Laya english, documented format
+    description: Larger input budget for Convai's documented format (exploratory, docs/plan-laya-format.md).
+    job: { component: laya-english-rec, input: "${input}", output: "${output as json}" }
+
+  - id: laya-typed-rec
+    title: Laya typed-decisions, documented format
+    description: Larger input budget for Convai's documented format (exploratory, docs/plan-laya-format.md).
+    job: { component: laya-typed-rec, input: "${input}", output: "${output as json}" }
+
+  - id: laya-multilingual-rec
+    title: Laya multilingual, documented format
+    description: Larger input budget for Convai's documented format (exploratory, docs/plan-laya-format.md).
+    job: { component: laya-multilingual-rec, input: "${input}", output: "${output as json}" }
+
+  - id: laya-english-ft-rec
+    title: Laya english, fine-tuned, documented format
+    description: Larger input budget for Convai's documented format (exploratory, docs/plan-laya-format.md).
+    job: { component: laya-english-ft-rec, input: "${input}", output: "${output as json}" }
+
 components:
   - id: nimble
     type: model
@@ -149,4 +169,71 @@ components:
     runtime:
       type: virtualenv
       path: .runtime/laya-english-ft
+    action: *action
+
+  - id: laya-english-rec
+    type: model
+    task: typed-decision
+    driver: custom
+    family: laya
+    preset: english
+    max_seq_length: 1024
+    max_head_length: 512
+    fast: false
+    preload: false
+    max_concurrent_count: 1
+    runtime:
+      type: virtualenv
+      path: .runtime/laya-english-rec
+    action: *action
+
+  - id: laya-typed-rec
+    type: model
+    task: typed-decision
+    driver: custom
+    family: laya
+    preset: typed-decisions
+    max_seq_length: 1024
+    max_head_length: 512
+    fast: false
+    preload: false
+    max_concurrent_count: 1
+    runtime:
+      type: virtualenv
+      path: .runtime/laya-typed-rec
+    action: *action
+
+  - id: laya-multilingual-rec
+    type: model
+    task: typed-decision
+    driver: custom
+    family: laya
+    preset: multilingual
+    max_seq_length: 4096
+    max_head_length: 512
+    fast: false
+    preload: false
+    max_concurrent_count: 1
+    runtime:
+      type: virtualenv
+      path: .runtime/laya-multilingual-rec
+    action: *action
+
+  - id: laya-english-ft-rec
+    type: model
+    task: typed-decision
+    driver: custom
+    family: laya
+    preset: english
+    model:
+      provider: huggingface
+      repository: MindrLabs/sts-arena-laya-english-ft
+    max_seq_length: 1024
+    max_head_length: 512
+    fast: false
+    preload: false
+    max_concurrent_count: 1
+    runtime:
+      type: virtualenv
+      path: .runtime/laya-english-ft-rec
     action: *action

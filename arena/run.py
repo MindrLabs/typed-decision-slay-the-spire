@@ -15,7 +15,7 @@ from pathlib import Path
 import slaythespire as sts
 
 from . import prompt as P
-from .players import make_player
+from .players import RotationPlayer, make_player
 
 MAX_BATTLE_DECISIONS = 3000   # guards against a fight that never ends (e.g. endless 0-cost plays)
 MAX_GAME_STEPS = 20000
@@ -88,7 +88,7 @@ def play_game(seed: int, player_name: str, out_dir: Path, ascension: int = 0,
     latencies.sort()
     return {
         "player": player_name, "seed": seed, "ascension": ascension,
-        "perms": perms, "power_notes": power_notes, "wording": wording,
+        "perms": "rotations" if isinstance(player, RotationPlayer) else perms, "power_notes": power_notes, "wording": wording,
         "outcome": gc.outcome.name, "floor": gc.floor_num, "act": gc.act, "hp": gc.cur_hp,
         "seconds": round(time.perf_counter() - t0, 2),
         "latency_p50_ms": round(latencies[len(latencies) // 2], 1) if latencies else None,
