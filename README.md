@@ -20,6 +20,11 @@ We served Bespoke Nimble-9B and three Convai Laya checkpoints with model-compose
   - [3.5 After fine-tuning](#35-after-fine-tuning)
 - [4 Recommendations](#4-recommendations)
 - [5 Limitations and what we did not measure](#5-limitations-and-what-we-did-not-measure)
+  - [What the intervals cover](#what-the-intervals-cover)
+  - [Changes from the pre-registration](#changes-from-the-pre-registration)
+  - [How much the software environment matters](#how-much-the-software-environment-matters)
+  - [What the models could not read](#what-the-models-could-not-read)
+  - [Other limitations](#other-limitations)
 - [License](#license)
 
 ## Models
@@ -88,7 +93,7 @@ The gradio interface opens on `http://localhost:8081` and the HTTP API on `http:
 | :---: | --- |
 | Game text | `fetch-game-text.sh` downloads five files (cards, relics, potions, events, monsters) from [spire-archive](https://github.com/nkhoit/spire-archive) at `687e6dce` and checks their sha256. The text belongs to the game, so this repository does not include it |
 | Simulator | `setup-simulator.sh` clones [sts_lightspeed](https://github.com/daniel-ziegler/sts_lightspeed) at `84ab3ead`, applies the five commits in `patches/sts_dz`, creates the runner's `.venv` with uv, and builds the `slaythespire` Python module into it |
-| Virtual environments | `setup-runtimes.sh` builds one environment per model under `.runtime/` from `runtimes/nimble.txt` and `runtimes/laya.txt` (torch 2.14.0 for both) |
+| Virtual environments | `setup-runtimes.sh` builds one environment per model under `.runtime/` from `runtimes/nimble.txt` and `runtimes/laya.txt`, pinned by version and wheel hash (torch 2.14.0 for both). `scripts/env-report.sh` prints the GPU, driver and packages to report with a rerun |
 | Checkpoints | Each model loads on its first request. Nimble-9B downloads its adapter (0.19 GB) and `Qwen/Qwen3.5-9B` (19.3 GB) and merges them once into `~/.cache/models/nimble-merged` (18.8 GB). The three Laya models share `convaiinnovations/laya` (2.4 GB). The fine-tuned models download `MindrLabs/sts-arena-nimble-ft` (1.3 GB, two training checkpoints included), merged onto the same base into another 18.8 GB, and `MindrLabs/sts-arena-laya-english-ft` (1.7 GB). No token is needed; `HF_TOKEN` only raises the download rate limit |
 
 The two search bots in the results play without a model server:
@@ -106,6 +111,7 @@ uv run python -m arena.bench --players nimble,laya-english,laya-typed,laya-multi
 uv run python scripts/stats.py results/final --refs results/main --single results/main \
   --wording results/wording --elite results/elite --latency results/latency --out reports/round1
 uv run python scripts/stats_round2.py --out reports/round2
+uv run python scripts/sensitivity.py
 uv run python scripts/charts.py
 ```
 
@@ -130,7 +136,7 @@ It returns `{"decision": {"pick": "A"}, "fields": {"pick": {"scores": {"A": 0.62
 1. Without training, Nimble-9B climbed higher than every Laya model: a mean of floor 14.1, against 10.4 for Laya english, 10.6 for typed-decisions and 2.4 for multilingual. On the same seed it beat Laya english 128 times, tied 36 and lost 36. No text model won a run. The search bot heart1 averaged floor 53 and won 165 of 200.
 2. Nimble-9B reads the options more. Asked the same decision with the options in 4 different orders, it picked the same action every time in 57% of decisions; Laya english did in 20%, typed-decisions in 26% and multilingual in 3%. Taking the majority over the 4 orders raised Nimble-9B by 1.2 floors, left Laya english and typed-decisions where they were, and dropped multilingual from 5.8 to 2.4: its earlier score came from favouring the first options.
 3. Put in the same act 1 elite fight with the same deck, Nimble-9B and Laya english won about equally often (84 and 80 of 90). The gap between them builds up over a run's other choices, not inside one fight.
-4. Fine-tuned once on the same 39,884 decisions of the search bot, Laya english rose 6.7 floors (10.4 to 17.1) and Nimble-9B 5.4 (14.1 to 19.5). Fine-tuned Nimble-9B still led by 2.4 floors. Both then picked the same action in every order in about 80% of decisions. Neither won a run.
+4. Fine-tuned once on the same 39,884 decisions of the search bot, Laya english rose 6.7 floors (10.4 to 17.1) and Nimble-9B 5.4 (14.1 to 19.5). Fine-tuned Nimble-9B still led by 2.4 floors, but it also trained 17 times longer (7.9 h against 0.5 h), so that lead mixes the model with its training budget. Both then picked the same action in every order in about 80% of decisions. Neither won a run.
 5. Laya answers in a sixth of the time and memory: 24 ms per request and about 3 GB on the DGX Spark, against 146 ms and 19 GB for Nimble-9B.
 
 Table 1: Summary by model (200 seeds each, 4 option orders per decision)
@@ -158,11 +164,12 @@ Table 2: Device and software
 
 - **What the model reads.** Each decision is a text state (floor, HP, gold, deck, relics, potions; in combat also the hand, energy, and each enemy's HP, intent and powers) and a list of options written as sentences, with card, relic and event descriptions taken from the game text. Every model gets the same text. Option texts are fitted once with the ModernBERT tokenizer to 320 tokens; 1.6% of decisions had an option shortened.
 - **What the model decides.** Everything, in and out of combat: the opening blessing, map path, card rewards, shop, campfire, events and each card or potion in a fight. The one exception is Match and Keep, a memory minigame with no option to describe, which the simulator's heuristic plays. Decisions with a single option are taken automatically.
-- **4 option orders.** Each decision with 3 or more options is asked in 4 orders (two seeded shuffles and their reverses; 2 orders when there are only 2 options) and the action picked most often is played. Ties go to the sum of each order's ranking, then to a seeded coin. A model that picks by position rather than content then cannot steer the game.
+- **4 option orders.** Each decision with 3 or more options is asked in 4 orders (two seeded shuffles and their reverses; 2 orders when there are only 2 options) and the action picked most often is played. Ties go to the sum of each order's ranking, then to a seeded coin. A model that picks by position rather than content then cannot steer the game. The 4 orders cancel a steady preference for early or late positions, but they do not put every option in every position, as averaging over all rotations would.
 - **Reference players.** heart1 (silverbot's policy network out of combat, the simulator's battle search in combat) and mcts-heuristic (the simulator's heuristic and battle search) play the same seeds without reading any text. Their search samples the cards still to be drawn and other random outcomes instead of reading them. They are a ceiling for scale, not competitors. random picks uniformly.
+- **Exploratory analyses.** Analyses that are not in the pre-registration are marked *(exploratory)*.
 - **Pre-registration.** The models, seeds, settings, primary comparisons and statistics were published before each round ran: [round 1](https://gist.github.com/kecan0406/5816965b9711d07509ab91c291dda7d7), [round 2](https://gist.github.com/kecan0406/aa20d9488e25d78ee508e2fe525d4c4d). Floors are compared seed by seed with a paired bootstrap (10,000 resamples) and a Wilcoxon test, Holm-corrected over each round's three primary comparisons.
 
-The published decisions replay exactly with this repository. On seed 1, every decision of the four zero-shot models came out the same (Nimble-9B 207, Laya english 134, typed-decisions 124, multilingual 13), and so did every decision of the two fine-tuned models (Nimble-9B 274, Laya english 368, downloaded from Hugging Face); both search bots ended on the same floor. That needs `setup-runtimes.sh`: without it, model-compose installs newer packages, and while Laya english still matched, Nimble-9B's scores moved in the third decimal place, a near-tie vote flipped at decision 13, and the game went another way.
+The published decisions replay exactly with this repository. On seed 1, every decision of the four zero-shot models came out the same (Nimble-9B 207, Laya english 134, typed-decisions 124, multilingual 13), and so did every decision of the two fine-tuned models (Nimble-9B 274, Laya english 368, downloaded from Hugging Face); both search bots ended on the same floor. That needs `setup-runtimes.sh`: without it, model-compose installs newer packages, and while Laya english still matched, Nimble-9B's scores moved in the third decimal place, a near-tie vote flipped at decision 13, and the game went another way. Over 50 seeds the averages and the ranking stayed the same (Table 9).
 
 ## 2 What it takes to run
 
@@ -177,6 +184,7 @@ Table 3: Time per decision on the DGX Spark (one model loaded at a time, 500 dec
 | Laya typed-decisions | 24 / 30 ms | 97 / 123 ms | about 3 GB |
 | Laya multilingual | 14 / 39 ms | 56 / 108 ms | about 3 GB |
 
+- For reference, Convai's model card gives 39.5 ms for Laya english and 32.8 ms for multilingual per question on a T4 GPU. Bespoke's card gives no latency.
 - One game of seed 1 took 20 s with Laya english (134 decisions) and about 2 minutes with Nimble-9B (207 decisions), not counting loading the model.
 - A decision is up to 4 requests, one per option order, so it takes about 4 times a request.
 - The fine-tuned models are slower per request because they reach deeper floors, where the state text is longer.
@@ -288,8 +296,10 @@ Figure 5 (DGX Spark): Share of runs that reached each floor. Solid lines are fin
 | Laya english | 0.255 → 0.573 | 0.46 h | 8 → 71 of 200 |
 | Nimble-9B | 0.337 → 0.599 | 7.94 h | 31 → 100 of 200 |
 
+Nimble-9B's training took 17 times as long as Laya english's on the same DGX Spark, so the 2.4-floor lead between the fine-tuned models reflects both the model and that budget. Each model was trained once; how far the result moves with another training run is not in the intervals.
+
 - Half of fine-tuned Nimble-9B's runs pass act 1, and its best run reached floor 50. heart1 averages 53.
-- Both fine-tuned models take the gold and relic of every reward screen. Zero-shot, Nimble-9B took the gold 77% of the time and Laya english 29%.
+- *(exploratory)* Both fine-tuned models take the gold and relic of every reward screen. Zero-shot, Nimble-9B took the gold 77% of the time and Laya english 29%.
 
 ## 4 Recommendations
 
@@ -301,14 +311,69 @@ Figure 5 (DGX Spark): Share of runs that reached each floor. Solid lines are fin
 
 ## 5 Limitations and what we did not measure
 
+### What the intervals cover
+
+The 95% intervals and p-values count only how results vary from one game seed to another. Behind them are one fine-tuning run per model, one software environment, one shared input format and one fixed set of 4 option orders. How far the numbers move with another training run, another environment (Table 9) or another wording (Section 3.4) is not in them.
+
+### Changes from the pre-registration
+
+The pre-registrations promised to list every deviation with its reason. Gist revisions are linked in each round's revision history.
+
+Table 8: Changes from the pre-registrations
+
+| Round | What changed | When | Why | Effect on results |
+|---|---|---|---|---|
+| 1 | Track B's code (`arena/elite.py`) and command were fixed in revision r2 | 2026-09-26 15:42 UTC, one minute after the track B run started. The random and mcts-heuristic fights and 2 of 90 fights per Laya model were done | The plan described the procedure but did not name the file | None; the design did not change |
+| 1 | The search bots' description was corrected (r3) | 2026-09-26 23:22 UTC, after all runs | r1 said they could see the simulator's random state. Their search works on the player's information set | None |
+| 1 | model-compose PR #27 was called a draft (r4) | 2026-09-28, after all runs | It had been merged on 2026-09-25, before registration | None; same commits |
+| 1 | The run added `--workers nimble=4` to the registered command | During the run | Throughput | None: decisions depend only on the seed, and seed 1 replays exactly |
+| 1 | Track C's decision times were first reported without the makers' numbers | Added in this README, 2026-10-01 | Missed in the first analysis | None |
+| 2 | The training set was to be subsampled to 40,000 decisions | Data generation, 2026-09-27 | Only 39,884 decisions existed | All were used |
+| 2 | model-compose PR #27 was called a draft (r2) | 2026-09-28, after all runs | As in round 1 | None |
+| This repository | The models are served by model-compose 0.4.113 instead of `e8ce0d4b` (+ `3f31d447` in round 2), and the runner talks to one server | 2026-10-01 | Public release | Seed 1 replays every published decision of all six models. `nimble-ft` needs PR #29 for decisions over 26 options (Other limitations) |
+
+### How much the software environment matters
+
+*(exploratory)* We played seeds 1-50 again without `setup-runtimes.sh`, with the packages model-compose installs by itself on 2026-10-01 (torch 2.14.1, a different triton 3.8.0 build, no flash-linear-attention, `laya` 0.3.22; `results/sensitivity/environment.txt`), and compared them seed by seed with the published run. `scripts/sensitivity.py` recomputes the table.
+
+Table 9: Published run against the same seeds with default packages (seeds 1-50, 4 option orders)
+
+| Model | Published | Default packages | Difference [95% CI] | Same floor | Identical games | First different decision, median |
+|---|---|---|---|---|---|---|
+| Nimble-9B | 13.74 | 14.30 | +0.56 [−0.28, +1.52] | 35 of 50 | 2 of 50 | 15 |
+| Laya english | 10.48 | 10.56 | +0.08 [0.00, +0.24] | 49 of 50 | 43 of 50 | 33 |
+| Laya typed-decisions | 11.34 | 11.34 | 0.00 [−0.20, +0.16] | 47 of 50 | 31 of 50 | 51 |
+| Laya multilingual | 2.86 | 2.80 | −0.06 [−0.20, +0.08] | 46 of 50 | 41 of 50 | 10 |
+
+- Nimble-9B is the most sensitive: 48 of 50 games went another way, usually from about the 15th decision, where a near-tie vote flipped. Its mean still moved by only +0.56 floors, with an interval that includes zero, and 35 games ended on the same floor. The Laya models mostly replayed.
+- The conclusions hold. In both environments the order is Nimble-9B, typed-decisions, english, multilingual, and Nimble-9B's lead over each Laya model stays above zero: over Laya english +3.26 [+1.80, +4.72] published and +3.74 [+1.98, +5.56] with default packages.
+- A single game is not reproducible across environments; an average over many seeds is. Compare reruns by their means, not game by game.
+
+
+### What the models could not read
+
+*(exploratory)* The runner fits the question and options to 320 tokens with the ModernBERT tokenizer for every model; 1.6% of decisions had an option shortened that way. On top of that, the `laya` package cuts each option at 48 tokens, shrinks every option when they do not fit its 320-token budget together, and keeps only as much of the state as fits in the model's input (512 tokens for english, 1,024 for typed-decisions; multilingual was set to 4,096). Nimble-9B reads up to 4,096 tokens and cuts nothing. Counted by replaying the `laya` package's input builder on every published decision:
+
+Table 10: Laya decisions whose input was cut
+
+| Model | Decisions | State cut | An option cut at 48 tokens | All options shrunk |
+|---|---|---|---|---|
+| Laya english | 19,768 | 17 (0.09%; at most 8.6% of the state lost) | 1,031 (5.2%) | 332 (1.7%) |
+| Laya typed-decisions | 22,296 | 0 | 1,326 (5.9%) | 455 (2.0%) |
+| Laya multilingual | 6,025 | 0 | 66 (1.1%) | 6 (0.1%) |
+| Laya english, fine-tuned | 45,148 | 541 (1.2%; median 6.4%, at most 30% lost) | 11,870 (26%) | 2,503 (5.5%) |
+
+Losing state text is rare. Cutting long option texts is not, and it grows for fine-tuned Laya english, whose deeper runs offer longer card and relic descriptions. It was trained through the same input builder, so it learned with the same cuts.
+
+### Other limitations
+
 - One game, one character, one difficulty (Ironclad, ascension 0). The simulator reimplements the game and differs from it in places (for example Designer In-Spire, Scrap Ooze and Woman in Blue).
 - Zero-shot Laya is used outside what Convai claims for it, and typed-decisions was fine-tuned for business workflows, not games. The models also differ about 20-fold in size (9B against 421M and 322M).
-- Laya english reads at most 512 tokens and typed-decisions 1024, so their long states are cut. Laya multilingual and Nimble-9B read up to 4096.
-- Fine-tuning used one method per model, the makers' published settings and one epoch. We do not know how far either model goes with other methods or more data.
+- Fine-tuning used one method per model, the makers' published settings and one epoch, with 17 times more training time for Nimble-9B. We do not know how far either model goes with other methods, more epochs or more data. LoRA, which Nimble-9B uses, generally needs more epochs than full fine-tuning to peak.
 - `nimble-ft` asked 12 decisions with more than 26 options over the 200 seeds. model-compose 0.4.113 refuses those; the published run used a local patch that builds such prompts with the checkpoint's own `serving_schema`, which [hanyeol/model-compose#29](https://github.com/hanyeol/model-compose/pull/29) (open as of 2026-10-01) brings to model-compose. Until it is released, `nimble-ft` needs model-compose from that pull request. With it, 23 of 23 decisions we checked picked as the published server did; we did not replay whole games with it.
-- We measured only on the DGX Spark, a machine shared with other jobs. Times are with one model loaded at a time. RTX-class GPUs, Macs and Laya's TileLang fast path (x86-64 only) were not tried.
+- We measured only on the DGX Spark, a machine shared with other jobs. Times are with one model loaded at a time. RTX-class GPUs, Macs and Laya's TileLang fast path (x86-64 only) were not tried. On other hardware a decision-for-decision replay is not expected; `scripts/env-report.sh` prints what a rerun should report.
 - The search bots are not competitors: they search the simulator, which no text model can.
-- The question wording is ours. Section 3.4 shows the Laya models' order depends on it.
+- The input format is ours and shared by all models. Section 3.4 shows the Laya models' order depends on the wording; neither maker's own recommended format was tried.
 - The decision logs quote the game text, so `results/` keeps only per-game summaries and, per decision, its kind, option count, pick and votes. The tables above are recomputed from those files.
 - The live demo (Demo) runs the real game and is not part of the benchmark.
 

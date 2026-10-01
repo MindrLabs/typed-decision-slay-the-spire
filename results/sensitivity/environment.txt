@@ -1,0 +1,5 @@
+gpu, driver: NVIDIA GB10, 580.126.09
+.runtime/laya-english: torch 2.14.1+cu130, triton 3.8.0, flash-linear-attention -, laya 0.3.22, transformers 5.18.0, cuda 13.0, NVIDIA GB10, 48 SMs
+.runtime/laya-multilingual: torch 2.14.1+cu130, triton 3.8.0, flash-linear-attention -, laya 0.3.22, transformers 5.18.0, cuda 13.0, NVIDIA GB10, 48 SMs
+.runtime/laya-typed: torch 2.14.1+cu130, triton 3.8.0, flash-linear-attention -, laya 0.3.22, transformers 5.18.0, cuda 13.0, NVIDIA GB10, 48 SMs
+.runtime/nimble: torch 2.14.1+cu130, triton 3.8.0, flash-linear-attention -, laya -, transformers 5.17.0, cuda 13.0, NVIDIA GB10, 48 SMs

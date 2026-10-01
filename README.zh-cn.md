@@ -20,6 +20,11 @@
   - [3.5 微调之后](#35-微调之后)
 - [4 建议](#4-建议)
 - [5 局限与未测量的内容](#5-局限与未测量的内容)
+  - [置信区间涵盖什么](#置信区间涵盖什么)
+  - [与预先登记的差异](#与预先登记的差异)
+  - [软件环境的影响](#软件环境的影响)
+  - [模型没有读到的输入](#模型没有读到的输入)
+  - [其他局限](#其他局限)
 - [许可证](#许可证)
 
 ## 模型
@@ -88,7 +93,7 @@ gradio 界面在 `http://localhost:8081`，HTTP API 在 `http://localhost:8080/a
 | :---: | --- |
 | 游戏文本 | `fetch-game-text.sh` 从 [spire-archive](https://github.com/nkhoit/spire-archive) 的 `687e6dce` 下载 5 个文件（卡牌、遗物、药水、事件、怪物）并校验 sha256。这些文本属于游戏，因此本仓库不包含它们 |
 | 模拟器 | `setup-simulator.sh` 克隆 [sts_lightspeed](https://github.com/daniel-ziegler/sts_lightspeed) 的 `84ab3ead`，应用 `patches/sts_dz` 中的 5 个提交，用 uv 创建运行器的 `.venv`，并把 `slaythespire` Python 模块构建进去 |
-| 虚拟环境 | `setup-runtimes.sh` 按 `runtimes/nimble.txt` 和 `runtimes/laya.txt` 在 `.runtime/` 下为每个模型建一个环境（两者都是 torch 2.14.0） |
+| 虚拟环境 | `setup-runtimes.sh` 按 `runtimes/nimble.txt` 和 `runtimes/laya.txt` 在 `.runtime/` 下为每个模型建一个环境，按版本和 wheel 哈希固定（两者都是 torch 2.14.0）。`scripts/env-report.sh` 输出重跑时应一并报告的 GPU、驱动和软件包 |
 | 检查点 | 每个模型在第一次请求时加载。Nimble-9B 下载适配器（0.19 GB）和 `Qwen/Qwen3.5-9B`（19.3 GB），只合并一次，存到 `~/.cache/models/nimble-merged`（18.8 GB）。三个 Laya 模型共用 `convaiinnovations/laya`（2.4 GB）。微调模型下载 `MindrLabs/sts-arena-nimble-ft`（1.3 GB，含两个训练中间检查点），合并到同一基座上（另占 18.8 GB），以及 `MindrLabs/sts-arena-laya-english-ft`（1.7 GB）。不需要 token，`HF_TOKEN` 只用于提高下载限速 |
 
 结果中的两个搜索机器人不需要模型服务器：
@@ -106,6 +111,7 @@ uv run python -m arena.bench --players nimble,laya-english,laya-typed,laya-multi
 uv run python scripts/stats.py results/final --refs results/main --single results/main \
   --wording results/wording --elite results/elite --latency results/latency --out reports/round1
 uv run python scripts/stats_round2.py --out reports/round2
+uv run python scripts/sensitivity.py
 uv run python scripts/charts.py
 ```
 
@@ -130,7 +136,7 @@ curl localhost:8080/api/workflows/runs -H 'Content-Type: application/json' -d '{
 1. 不经训练时，Nimble-9B 爬得比所有 Laya 模型都高：平均到达第 14.1 层，Laya english 为 10.4，typed-decisions 为 10.6，multilingual 为 2.4。在同一种子上，它对 Laya english 赢 128 次、平 36 次、输 36 次。没有任何文本模型赢下一局。搜索机器人 heart1 平均到达第 53 层，200 局赢 165 局。
 2. Nimble-9B 更会读选项。同一个决策只把选项顺序换成 4 种来问，它在 57% 的决策中每次都选同一个动作；Laya english 为 20%，typed-decisions 为 26%，multilingual 为 3%。改用 4 种顺序的多数票后，Nimble-9B 上升 1.2 层，Laya english 和 typed-decisions 不变，multilingual 从 5.8 层降到 2.4 层：它原来的分数来自偏爱靠前的选项。
 3. 用同一副牌打同一场第 1 幕精英战时，Nimble-9B 和 Laya english 胜率相近（90 场中分别赢 84 和 80 场）。两者的差距不是在一场战斗里拉开的，而是在一局中其他选择上积累起来的。
-4. 用搜索机器人的同一批 39,884 个决策各微调一次后，Laya english 上升 6.7 层（10.4 到 17.1），Nimble-9B 上升 5.4 层（14.1 到 19.5）。微调后的 Nimble-9B 仍领先 2.4 层。两者都在约 80% 的决策中对所有顺序选同一个动作。仍然没有赢下一局。
+4. 用搜索机器人的同一批 39,884 个决策各微调一次后，Laya english 上升 6.7 层（10.4 到 17.1），Nimble-9B 上升 5.4 层（14.1 到 19.5）。微调后的 Nimble-9B 仍领先 2.4 层，但它的训练时间也长了 17 倍（7.9 小时对 0.5 小时），所以这一领先同时包含模型和训练预算的作用。两者都在约 80% 的决策中对所有顺序选同一个动作。仍然没有赢下一局。
 5. Laya 只用六分之一的时间和内存：在 DGX Spark 上每次请求 24 ms、约 3 GB，Nimble-9B 为 146 ms、19 GB。
 
 表 1：各模型概况（每个模型 200 个种子，每个决策 4 种选项顺序）
@@ -158,11 +164,12 @@ curl localhost:8080/api/workflows/runs -H 'Content-Type: application/json' -d '{
 
 - **模型读到什么。** 每个决策是一段状态文本（层数、HP、金币、牌组、遗物、药水；战斗中还有手牌、能量以及每个敌人的 HP、意图和能力）和一组写成句子的选项，卡牌、遗物和事件的描述取自游戏文本。所有模型拿到相同的文本。选项文本用 ModernBERT 分词器统一截到 320 个 token，1.6% 的决策中有选项被缩短。
 - **模型决定什么。** 战斗内外的一切：开局祝福、地图路线、卡牌奖励、商店、篝火、事件，以及战斗中的每张牌和每瓶药水。唯一的例外是记忆小游戏 Match and Keep，它没有可描述的选项，由模拟器的启发式算法来下。只有一个选项的决策自动执行。
-- **4 种选项顺序。** 有 3 个及以上选项的决策按 4 种顺序提问（两次由种子决定的打乱及其倒序；只有 2 个选项时为 2 种），执行被选次数最多的动作。平票时按各顺序排名得分之和决定，仍相同则按种子抽签。这样，按位置而不是按内容选择的模型就无法左右游戏。
+- **4 种选项顺序。** 有 3 个及以上选项的决策按 4 种顺序提问（两次由种子决定的打乱及其倒序；只有 2 个选项时为 2 种），执行被选次数最多的动作。平票时按各顺序排名得分之和决定，仍相同则按种子抽签。这样，按位置而不是按内容选择的模型就无法左右游戏。这 4 种顺序能抵消对靠前或靠后位置的稳定偏好，但不像对所有轮换取平均那样让每个选项在每个位置各出现一次。
 - **参考玩家。** heart1（战斗外用 silverbot 的策略网络，战斗中用模拟器的战斗搜索）和 mcts-heuristic（模拟器的启发式算法加战斗搜索）不读任何文本，打同样的种子。它们的搜索对尚未抽到的牌和其他随机结果进行采样，而不是直接读取。它们是用来衡量尺度的上限，不是竞争对手。random 均匀随机选择。
+- **探索性分析。** 不在预先登记中的分析都标注为 *（探索性）*。
 - **预先登记。** 每轮运行前都公开了模型、种子、设置、主要比较和统计方法：[第 1 轮](https://gist.github.com/kecan0406/5816965b9711d07509ab91c291dda7d7)、[第 2 轮](https://gist.github.com/kecan0406/aa20d9488e25d78ee508e2fe525d4c4d)。层数按种子配对比较，使用配对 bootstrap（10,000 次重采样）和 Wilcoxon 检验，并对每轮的三个主要比较做 Holm 校正。
 
-用本仓库可以原样重现公开的决策。在种子 1 上，四个未训练模型的决策全部相同（Nimble-9B 207 个、Laya english 134 个、typed-decisions 124 个、multilingual 13 个），从 Hugging Face 下载的两个微调模型的决策也全部相同（Nimble-9B 274 个、Laya english 368 个），两个搜索机器人也停在同一层。前提是先运行 `setup-runtimes.sh`：不运行时 model-compose 会安装更新的软件包，Laya english 仍然一致，但 Nimble-9B 的分数在小数点后第三位发生变化，第 13 个决策中一张接近平票的投票翻转，游戏走向了另一条路。
+用本仓库可以原样重现公开的决策。在种子 1 上，四个未训练模型的决策全部相同（Nimble-9B 207 个、Laya english 134 个、typed-decisions 124 个、multilingual 13 个），从 Hugging Face 下载的两个微调模型的决策也全部相同（Nimble-9B 274 个、Laya english 368 个），两个搜索机器人也停在同一层。前提是先运行 `setup-runtimes.sh`：不运行时 model-compose 会安装更新的软件包，Laya english 仍然一致，但 Nimble-9B 的分数在小数点后第三位发生变化，第 13 个决策中一张接近平票的投票翻转，游戏走向了另一条路。不过在 50 个种子上，平均值和排名保持不变（表 9）。
 
 ## 2 运行需要什么
 
@@ -177,6 +184,7 @@ curl localhost:8080/api/workflows/runs -H 'Content-Type: application/json' -d '{
 | Laya typed-decisions | 24 / 30 ms | 97 / 123 ms | 约 3 GB |
 | Laya multilingual | 14 / 39 ms | 56 / 108 ms | 约 3 GB |
 
+- 作为参考，Convai 的模型卡片给出在 T4 GPU 上每个问题的延迟：Laya english 39.5 ms，multilingual 32.8 ms。Bespoke 的卡片没有给出延迟。
 - 种子 1 的一局，Laya english 用了 20 秒（134 个决策），Nimble-9B 约 2 分钟（207 个决策），不含加载模型的时间。
 - 一个决策按每种选项顺序各请求一次，最多 4 次，所以耗时约为单次请求的 4 倍。
 - 微调后的模型能走到更深的层，那里的状态文本更长，所以每次请求更慢。
@@ -288,8 +296,10 @@ Nimble-9B 仍是第一，并高于每个 Laya 模型。预先登记的检查（�
 | Laya english | 0.255 → 0.573 | 0.46 小时 | 200 局中 8 → 71 |
 | Nimble-9B | 0.337 → 0.599 | 7.94 小时 | 200 局中 31 → 100 |
 
+在同一台 DGX Spark 上，Nimble-9B 的训练时间是 Laya english 的 17 倍，所以两个微调模型之间 2.4 层的差距同时反映了模型和这一预算。每个模型只训练了一次，换一次训练结果会变动多少，并不在置信区间之内。
+
 - 微调后的 Nimble-9B 有一半对局通过第 1 幕，最远到达第 50 层。heart1 平均为 53 层。
-- 两个微调模型在每个奖励界面都拿走了金币和遗物。未训练时，Nimble-9B 拿金币的比例为 77%，Laya english 为 29%。
+- *（探索性）* 两个微调模型在每个奖励界面都拿走了金币和遗物。未训练时，Nimble-9B 拿金币的比例为 77%，Laya english 为 29%。
 
 ## 4 建议
 
@@ -301,14 +311,68 @@ Nimble-9B 仍是第一，并高于每个 Laya 模型。预先登记的检查（�
 
 ## 5 局限与未测量的内容
 
+### 置信区间涵盖什么
+
+95% 置信区间和 p 值只计入结果随游戏种子变化的程度。其背后是每个模型一次微调、一个软件环境、所有模型共用的一种输入格式和固定的 4 种选项顺序。换一次训练、换一个环境（表 9）或换一种问法（第 3.4 节）时数字会变动多少，并不包含在内。
+
+### 与预先登记的差异
+
+预先登记承诺列出每一处偏离及其原因。各轮的 gist 修订都链接在其修订历史中。
+
+表 8：与预先登记的差异
+
+| 轮次 | 改动 | 时间 | 原因 | 对结果的影响 |
+|---|---|---|---|---|
+| 1 | 在修订 r2 中固定了 Track B 的代码（`arena/elite.py`）和命令 | 2026-09-26 15:42 UTC，Track B 开始运行 1 分钟后。此时 random 和 mcts-heuristic 的战斗、每个 Laya 模型 90 场中的 2 场已经完成 | 计划描述了流程，但没有指定文件 | 无；设计不变 |
+| 1 | 更正了对搜索机器人的描述（r3） | 2026-09-26 23:22 UTC，所有运行结束后 | r1 写它们能看到模拟器的随机状态。实际上它们的搜索只在玩家已知的信息内进行 | 无 |
+| 1 | 把 model-compose PR #27 写成了 draft（r4） | 2026-09-28，所有运行结束后 | 它在登记之前的 2026-09-25 已经合并 | 无；提交相同 |
+| 1 | 运行时在登记的命令上加了 `--workers nimble=4` | 运行中 | 吞吐量 | 无：决策只由种子决定，种子 1 可以原样重现 |
+| 1 | Track C 的决策时间最初没有与开发者公布的数字一起报告 | 在本 README 中补上，2026-10-01 | 第一次分析时遗漏 | 无 |
+| 2 | 训练集原定抽样到 40,000 个决策 | 数据生成，2026-09-27 | 只有 39,884 个决策 | 全部使用 |
+| 2 | 把 model-compose PR #27 写成了 draft（r2） | 2026-09-28，所有运行结束后 | 同第 1 轮 | 无 |
+| 本仓库 | 用 model-compose 0.4.113 代替 `e8ce0d4b`（第 2 轮另加 `3f31d447`）部署模型，运行器只请求一个服务器 | 2026-10-01 | 公开发布 | 种子 1 上六个模型的公开决策全部重现。`nimble-ft` 遇到超过 26 个选项的决策时需要 PR #29（见其他局限） |
+
+### 软件环境的影响
+
+*（探索性）* 我们不运行 `setup-runtimes.sh`，用 model-compose 在 2026-10-01 自行安装的软件包（torch 2.14.1、另一个构建的 triton 3.8.0、没有 flash-linear-attention、`laya` 0.3.22；见 `results/sensitivity/environment.txt`）重跑种子 1-50，并与公开结果逐种子比较。`scripts/sensitivity.py` 会重新算出这张表。
+
+表 9：公开结果与用默认软件包重跑同样种子的对比（种子 1-50，4 种选项顺序）
+
+| 模型 | 公开结果 | 默认软件包 | 差 [95% CI] | 同层 | 决策完全相同的对局 | 首个不同决策，中位数 |
+|---|---|---|---|---|---|---|
+| Nimble-9B | 13.74 | 14.30 | +0.56 [−0.28, +1.52] | 50 局中 35 | 50 局中 2 | 第 15 个 |
+| Laya english | 10.48 | 10.56 | +0.08 [0.00, +0.24] | 50 局中 49 | 50 局中 43 | 第 33 个 |
+| Laya typed-decisions | 11.34 | 11.34 | 0.00 [−0.20, +0.16] | 50 局中 47 | 50 局中 31 | 第 51 个 |
+| Laya multilingual | 2.86 | 2.80 | −0.06 [−0.20, +0.08] | 50 局中 46 | 50 局中 41 | 第 10 个 |
+
+- Nimble-9B 最敏感：50 局中有 48 局走向了别的路，通常在第 15 个决策左右有一张接近平票的投票翻转。但它的平均值只变动了 +0.56 层，置信区间包含 0，并且有 35 局停在同一层。Laya 模型大多原样重现。
+- 结论不变。两种环境下的顺序都是 Nimble-9B、typed-decisions、english、multilingual，Nimble-9B 对每个 Laya 模型的领先，其置信区间都在 0 以上。对 Laya english 的领先，公开结果为 +3.26 [+1.80, +4.72]，默认软件包为 +3.74 [+1.98, +5.56]。
+- 换了环境，单局无法重现，但多个种子的平均值可以重现。比较重跑结果时请比较平均值，而不是逐局比较。
+
+### 模型没有读到的输入
+
+*（探索性）* 运行器对所有模型都用 ModernBERT 分词器把问题和选项截到 320 个 token；这样被缩短选项的决策占 1.6%。此外，`laya` 软件包会把每个选项截到 48 个 token，当所有选项合起来放不进 320 个 token 的预算时把每个选项都缩短，并且只保留能放进模型输入的那部分状态（english 512 个 token，typed-decisions 1,024 个，multilingual 设为 4,096）。Nimble-9B 最多读 4,096 个 token，不做任何截断。我们对每个公开决策重新运行 `laya` 软件包的输入构建代码来计数：
+
+表 10：输入被截断的 Laya 决策
+
+| 模型 | 决策数 | 状态被截断 | 有选项在 48 个 token 处被截断 | 所有选项被缩短 |
+|---|---|---|---|---|
+| Laya english | 19,768 | 17（0.09%；最多丢失状态的 8.6%） | 1,031（5.2%） | 332（1.7%） |
+| Laya typed-decisions | 22,296 | 0 | 1,326（5.9%） | 455（2.0%） |
+| Laya multilingual | 6,025 | 0 | 66（1.1%） | 6（0.1%） |
+| Laya english，微调 | 45,148 | 541（1.2%；中位数 6.4%，最多丢失 30%） | 11,870（26%） | 2,503（5.5%） |
+
+状态文本被截断的情况很少。长选项被截断则并不少见，而且在微调后的 Laya english 中更多，因为它走到更深的层，卡牌和遗物的描述更长。它通过同一套输入构建代码训练，所以是带着同样的截断学习的。
+
+### 其他局限
+
 - 只看了一个游戏、一个角色、一个难度（铁甲战士，进阶 0）。模拟器是对游戏的重新实现，有些地方行为不同（例如 Designer In-Spire、Scrap Ooze、Woman in Blue）。
 - 未训练的 Laya 被用在 Convai 所声称的用途之外，typed-decisions 是为业务流程而非游戏微调的检查点。模型规模也相差约 20 倍（9B 对 421M 和 322M）。
-- Laya english 最多读 512 个 token，typed-decisions 最多 1024 个，所以较长的状态会被截断。Laya multilingual 和 Nimble-9B 最多读 4096 个。
-- 微调每个模型只用一种方法、开发者公开的设置和 1 个 epoch。用其他方法或更多数据能提高到什么程度，我们不知道。
+- 微调每个模型只用一种方法、开发者公开的设置和 1 个 epoch，而且 Nimble-9B 的训练时间长 17 倍。用其他方法、更多 epoch 或更多数据能提高到什么程度，我们不知道。Nimble-9B 使用的 LoRA 一般比全参数微调需要更多 epoch 才能达到峰值。
 - 在 200 个种子中，`nimble-ft` 遇到 12 个选项超过 26 个的决策。model-compose 0.4.113 会拒绝这类决策；公开运行用了一个本地补丁，用检查点自带的 `serving_schema` 构建这类提示词，[hanyeol/model-compose#29](https://github.com/hanyeol/model-compose/pull/29)（截至 2026-10-01 仍在审阅中）会把同样的功能加入 model-compose。在它发布之前，`nimble-ft` 需要使用这个 PR 的 model-compose。我们用它核对的 23 个决策与公开服务器的选择全部相同，但没有用它重放整局。
-- 只在与其他任务共用的 DGX Spark 上测量，时间是每次只加载一个模型时测的。没有试过 RTX 系列 GPU、Mac 以及 Laya 的 TileLang 快速路径（仅限 x86-64）。
+- 只在与其他任务共用的 DGX Spark 上测量，时间是每次只加载一个模型时测的。没有试过 RTX 系列 GPU、Mac 以及 Laya 的 TileLang 快速路径（仅限 x86-64）。在其他硬件上不应期待逐决策重现；`scripts/env-report.sh` 会输出重跑时应报告的信息。
 - 搜索机器人不是竞争对手：它们直接搜索模拟器，文本模型做不到。
-- 问题的措辞由我们决定。第 3.4 节显示，Laya 模型之间的排序取决于措辞。
+- 输入格式由我们决定，所有模型共用。第 3.4 节显示，Laya 模型之间的排序取决于问法。两家开发者各自推荐的格式没有试过。
 - 决策日志引用了游戏文本，因此 `results/` 只保留每局摘要，以及每个决策的类型、选项数、选择和投票。上面的表都是从这些文件重新计算的。
 - 演示在真实游戏中运行，不属于基准测试。
 
