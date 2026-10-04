@@ -31,7 +31,7 @@ def _log(fh, d: P.Decision, choice, gc, player: str, seed: int):
 
 
 def play_game(seed: int, player_name: str, out_dir: Path, ascension: int = 0,
-              perms: int = 1, power_notes: bool = False, wording: str = "main") -> dict:
+              perms: int = 1, power_notes: bool = False, wording: str = "main", potion_step: bool = False) -> dict:
     player = make_player(player_name, seed, perms)
     gc = sts.GameContext(sts.CharacterClass.IRONCLAD, seed, ascension)
     heuristic = sts.Agent()  # only for Match and Keep, a memory minigame with no describable choice
@@ -59,13 +59,19 @@ def play_game(seed: int, player_name: str, out_dir: Path, ascension: int = 0,
                 break
             if gc.screen_state == sts.ScreenState.BATTLE:
                 bc = gc.create_battle_context()
+                step = P.PotionStep() if potion_step else None
                 n = 0
                 while bc.outcome == sts.BattleOutcome.UNDECIDED:
                     n += 1
                     if n > MAX_BATTLE_DECISIONS:
                         counts["aborted"] = "battle decision limit"
                         break
-                    d = P.battle_decision(bc, gc, power_notes, wording)
+                    if step and (d := step.ask(bc, gc, power_notes)):
+                        i = decide(d, fh)
+                        step.answered(d, i, bc, gc)
+                        d.actions[i].execute(bc)
+                        continue
+                    d = P.battle_decision(bc, gc, power_notes, wording, potion_step)
                     if len(d.actions) == 1:
                         counts["forced"] += 1
                         d.actions[0].execute(bc)
@@ -89,6 +95,7 @@ def play_game(seed: int, player_name: str, out_dir: Path, ascension: int = 0,
     return {
         "player": player_name, "seed": seed, "ascension": ascension,
         "perms": "rotations" if isinstance(player, RotationPlayer) else perms, "power_notes": power_notes, "wording": wording,
+        **({"potion_step": True} if potion_step else {}),   # absent in every benchmark run
         "outcome": gc.outcome.name, "floor": gc.floor_num, "act": gc.act, "hp": gc.cur_hp,
         "seconds": round(time.perf_counter() - t0, 2),
         "latency_p50_ms": round(latencies[len(latencies) // 2], 1) if latencies else None,
@@ -113,11 +120,13 @@ def main():
     ap.add_argument("--perms", type=int, default=1, help="option orders per model decision, majority vote")
     ap.add_argument("--power-notes", action="store_true", help="explain enemy powers in the battle state")
     ap.add_argument("--wording", choices=sorted(P.INSTRUCTIONS), default="main", help="wording of the two questions")
+    ap.add_argument("--potion-step", action="store_true", help="ask about potions first each turn (prompt.PotionStep)")
     args = ap.parse_args()
     out_dir = Path(args.out) / args.player
     out_dir.mkdir(parents=True, exist_ok=True)
     for seed in _seeds(args.seeds):
-        summary = play_game(seed, args.player, out_dir, args.ascension, args.perms, args.power_notes, args.wording)
+        summary = play_game(seed, args.player, out_dir, args.ascension, args.perms, args.power_notes, args.wording,
+                            args.potion_step)
         with open(out_dir / "games.jsonl", "a") as fh:
             fh.write(json.dumps(summary) + "\n")
         print(json.dumps(summary), flush=True)

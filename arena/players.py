@@ -142,6 +142,8 @@ FAMILIES = {
     "laya-english": "laya", "laya-multilingual": "laya", "laya-typed": "laya", "nimble": "nimble",
     # round 2: the same models fine-tuned on teacher decisions
     "laya-english-ft": "laya", "nimble-ft": "nimble",
+    # the potion round (docs/potion-round.md): played with --potion-step
+    "laya-english-ft4": "laya", "nimble-ft4": "nimble",
 }
 # Laya in its documented format: larger input budgets (the -rec workflows) and rotation averaging.
 RECOMMENDED = ("laya-english-rec", "laya-typed-rec", "laya-multilingual-rec", "laya-english-ft-rec")

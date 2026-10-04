@@ -35,11 +35,21 @@ workflows:
     description: Fine-tuned once on heart1's decisions (round 2).
     job: { component: nimble-ft, input: "${input}", output: "${output as json}" }
 
+
+  - id: nimble-ft4
+    title: Bespoke Nimble-9B, fine-tuned for the potion round
+    description: Round 2's adapter trained further with the potion step and heart1's search visits (docs/potion-round.md). Play it with --potion-step.
+    job: { component: nimble-ft4, input: "${input}", output: "${output as json}" }
   - id: laya-english-ft
     title: Laya english, fine-tuned
     description: Fine-tuned once on heart1's decisions (round 2).
     job: { component: laya-english-ft, input: "${input}", output: "${output as json}" }
 
+
+  - id: laya-english-ft4
+    title: Laya english, fine-tuned for the potion round
+    description: Round 2's checkpoint trained further with the potion step and heart1's search visits (docs/potion-round.md). Play it with --potion-step.
+    job: { component: laya-english-ft4, input: "${input}", output: "${output as json}" }
   - id: laya-english-rec
     title: Laya english, documented format
     description: Larger input budget for Convai's documented format (exploratory, docs/plan-laya-format.md).
@@ -107,6 +117,27 @@ components:
       path: .runtime/nimble-ft
     action: *action
 
+
+  - id: nimble-ft4
+    type: model
+    task: typed-decision
+    driver: custom
+    family: nimble
+    model:
+      provider: huggingface
+      repository: MindrLabs/sts-arena-nimble-ft4
+    base_model:
+      provider: huggingface
+      repository: Qwen/Qwen3.5-9B
+      revision: c202236235762e1c871ad0ccb60c8ee5ba337b9a
+    max_seq_length: 4096
+    precision: bfloat16
+    preload: false
+    max_concurrent_count: 1
+    runtime:
+      type: virtualenv
+      path: .runtime/nimble-ft4
+    action: *action
   - id: laya-english
     type: model
     task: typed-decision
@@ -171,6 +202,24 @@ components:
       path: .runtime/laya-english-ft
     action: *action
 
+
+  - id: laya-english-ft4
+    type: model
+    task: typed-decision
+    driver: custom
+    family: laya
+    preset: english
+    model:
+      provider: huggingface
+      repository: MindrLabs/sts-arena-laya-english-ft4
+    max_head_length: 320
+    fast: false
+    preload: false
+    max_concurrent_count: 1
+    runtime:
+      type: virtualenv
+      path: .runtime/laya-english-ft4
+    action: *action
   - id: laya-english-rec
     type: model
     task: typed-decision

@@ -1,0 +1,16 @@
+{
+  "before": {
+    "examples": 1500,
+    "teacher_agreement": 0.608,
+    "nll": 0.981962937672933
+  },
+  "after": {
+    "examples": 1500,
+    "teacher_agreement": 0.6213333333333333,
+    "nll": 0.9696336822509766
+  },
+  "train_examples": 24000,
+  "steps": 3558,
+  "train_seconds": 2064.2,
+  "peak_gpu_gib": 10.9
+}

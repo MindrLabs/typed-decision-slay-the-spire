@@ -1,0 +1,46 @@
+{
+  "before": {
+    "all": {
+      "count": 1500,
+      "correct": 950,
+      "accuracy": 0.6333333333333333,
+      "nll": 0.9540816544304634,
+      "brier": 0.46023855651229906
+    },
+    "choice": {
+      "count": 1500,
+      "correct": 950,
+      "accuracy": 0.6333333333333333,
+      "nll": 0.9540816544304634,
+      "brier": 0.46023855651229906
+    }
+  },
+  "after": {
+    "all": {
+      "count": 1500,
+      "correct": 954,
+      "accuracy": 0.636,
+      "nll": 0.9099311780022806,
+      "brier": 0.4497697505600569
+    },
+    "choice": {
+      "count": 1500,
+      "correct": 954,
+      "accuracy": 0.636,
+      "nll": 0.9099311780022806,
+      "brier": 0.4497697505600569
+    }
+  },
+  "train_examples": 24000,
+  "steps": 3000,
+  "train_seconds": 15845.9,
+  "metrics": {
+    "train_runtime": 15845.6526,
+    "train_samples_per_second": 1.515,
+    "train_steps_per_second": 0.189,
+    "total_flos": 6.544518106844009e+17,
+    "train_loss": 0.8788817105293274,
+    "epoch": 1.0
+  },
+  "peak_gpu_gib": 38.8
+}

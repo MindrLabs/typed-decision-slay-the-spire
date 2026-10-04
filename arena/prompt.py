@@ -15,6 +15,14 @@ BATTLE_INSTRUCTIONS = "Which action should the player take now to win this fight
 # wording (bench --wording alt). Only the question changes: state and options stay as they are, and
 # each version has as many ModernBERT tokens as the original (16 and 19), so options are shortened
 # for the same decisions.
+# The potion step (--potion-step, live demo and potion-round training only; never in the benchmark): at the start
+# of each turn the player is first asked about potions alone, with the fight's kind and place on the state's
+# first line. Card decisions keep their potion options for potions that fit mid-turn.
+POTION_INSTRUCTIONS = ("Should the player use a potion now, at the start of this turn, to win this fight while losing "
+                       "as little HP as possible?")
+KEEP_POTIONS = "Keep the potions for now."
+FIGHT_KINDS = {"ELITE": "elite", "BOSS": "boss"}   # Room / CommunicationMod room types; anything else is "normal"
+
 INSTRUCTIONS = {
     "main": {"overworld": OVERWORLD_INSTRUCTIONS, "battle": BATTLE_INSTRUCTIONS},
     "alt": {"overworld": "Pick the option that makes winning this Slay the Spire run most likely.",
@@ -24,7 +32,7 @@ INSTRUCTIONS = {
 
 @dataclasses.dataclass
 class Decision:
-    kind: str                 # "overworld" | "battle"
+    kind: str                 # "overworld" | "battle" | "potion" (the potion step)
     screen: str               # e.g. REWARDS, MAP_SCREEN, BATTLE
     state: str
     instructions: str
@@ -64,14 +72,64 @@ def overworld_decision(gc, wording: str = "main") -> Decision:
     return _decision("overworld", D._name(gc.screen_state), state, INSTRUCTIONS[wording]["overworld"], actions, texts)
 
 
-def battle_decision(bc, gc, power_notes: bool = False, wording: str = "main") -> Decision:
-    actions = sts.Action.enumerate_actions(bc)
-    texts = [D.describe_battle_action(bc, a) for a in actions]
+def fight_line(kind: str, act: int, floor: int) -> str:
+    return f"Fight: {kind}. Act {act}, floor {floor}."
+
+
+def _battle_state(bc, gc, power_notes: bool, potion_step: bool) -> str:
     lines = [D.battle_state(bc, power_notes)]
     if D._name(bc.input_state) == "CARD_SELECT":
         lines.insert(0, D.battle_select_context(bc))
+    if potion_step:
+        lines.insert(0, fight_line(FIGHT_KINDS.get(D._name(gc.cur_room), "normal"), gc.act, gc.floor_num))
     lines.append(f"Relics: {', '.join(D.relic_label(r.id) for r in gc.relics) or 'none'}.")
-    return _decision("battle", "BATTLE", "\n".join(lines), INSTRUCTIONS[wording]["battle"], actions, texts)
+    return "\n".join(lines)
+
+
+def battle_decision(bc, gc, power_notes: bool = False, wording: str = "main", potion_step: bool = False) -> Decision:
+    actions = sts.Action.enumerate_actions(bc)
+    texts = [D.describe_battle_action(bc, a) for a in actions]
+    return _decision("battle", "BATTLE", _battle_state(bc, gc, power_notes, potion_step),
+                     INSTRUCTIONS[wording]["battle"], actions, texts)
+
+
+class _Keep:
+    """The potion step's "keep the potions" option: no engine action."""
+    def execute(self, _ctx) -> None:
+        pass
+
+
+KEEP = _Keep()
+
+
+def potion_decision(bc, gc, power_notes: bool = False) -> Decision | None:
+    """The potion step's question, when the player can use a potion now: the potion actions and KEEP."""
+    if D._name(bc.input_state) != "PLAYER_NORMAL":
+        return None
+    actions = [a for a in sts.Action.enumerate_actions(bc) if a.get_action_type() == sts.ActionType.POTION]
+    if not actions:
+        return None
+    texts = [D.describe_battle_action(bc, a) for a in actions]
+    return _decision("potion", "BATTLE", _battle_state(bc, gc, power_notes, True), POTION_INSTRUCTIONS,
+                     actions + [KEEP], texts + [KEEP_POTIONS])
+
+
+class PotionStep:
+    """Asks the potion question once per turn: again after a potion is used, not again after KEEP."""
+    def __init__(self):
+        self.kept: tuple | None = None
+
+    def ask(self, bc, gc, power_notes: bool = False) -> Decision | None:
+        if self.kept == (gc.floor_num, bc.turn):
+            return None
+        d = potion_decision(bc, gc, power_notes)
+        if d is None:
+            self.kept = (gc.floor_num, bc.turn)
+        return d
+
+    def answered(self, d: Decision, index: int, bc, gc) -> None:
+        if d.actions[index] is KEEP:
+            self.kept = (gc.floor_num, bc.turn)
 
 
 # --- rendering ----------------------------------------------------------------

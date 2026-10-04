@@ -1,0 +1,8 @@
+== laya-english-ft4: 8 finished games, mean floor 23.6, victories 0
+   potions used 39 (4.9/game), potion questions 313 (a potion chosen in 5), lost games with a usable potion left 3/8
+   relics taken 34, gold rewards taken 110, reward screens left with a relic or gold on them 0; boss relics 6/6
+   shop: 10 visits, 10 with a purchase, 20 purchases
+== nimble-ft4: 8 finished games, mean floor 29.9, victories 1
+   potions used 49 (6.1/game), potion questions 323 (a potion chosen in 8), lost games with a usable potion left 1/7
+   relics taken 53, gold rewards taken 139, reward screens left with a relic or gold on them 0; boss relics 8/8
+   shop: 11 visits, 9 with a purchase, 15 purchases

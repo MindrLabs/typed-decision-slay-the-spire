@@ -9,7 +9,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-for runtime in nimble nimble-ft laya-english laya-typed laya-multilingual laya-english-ft \
+for runtime in nimble nimble-ft nimble-ft4 laya-english laya-typed laya-multilingual laya-english-ft laya-english-ft4 \
                laya-english-rec laya-typed-rec laya-multilingual-rec laya-english-ft-rec; do
   lock=runtimes/${runtime%%-*}.txt
   [ -d ".runtime/$runtime" ] || uv venv -q -p 3.12 ".runtime/$runtime"

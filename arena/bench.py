@@ -20,7 +20,8 @@ from .run import _seeds, play_game
 
 BASELINES = {"mcts-heuristic", "heart1"}
 DEFAULT_WORKERS = {"random": 4, "laya-english": 3, "laya-multilingual": 3, "laya-typed": 3,
-                   "nimble": 2, "laya-english-ft": 3, "nimble-ft": 2, "mcts-heuristic": 4, "heart1": 4}
+                   "nimble": 2, "laya-english-ft": 3, "nimble-ft": 2,
+                   "laya-english-ft4": 3, "nimble-ft4": 2, "mcts-heuristic": 4, "heart1": 4}
 
 
 def _done(out_dir: Path) -> set[int]:
@@ -31,7 +32,7 @@ def _done(out_dir: Path) -> set[int]:
 
 
 def run_player(player: str, seeds: list[int], out: Path, workers: int, ascension: int, mcts_sims: int,
-               perms: int, power_notes: bool, wording: str) -> None:
+               perms: int, power_notes: bool, wording: str, potion_step: bool = False) -> None:
     out_dir = out / player
     out_dir.mkdir(parents=True, exist_ok=True)
     todo = [s for s in seeds if s not in _done(out_dir)]
@@ -43,7 +44,7 @@ def run_player(player: str, seeds: list[int], out: Path, workers: int, ascension
             if player in BASELINES:
                 summary = play_baseline_game(seed, player, ascension, mcts_sims)
             else:
-                summary = play_game(seed, player, out_dir, ascension, perms, power_notes, wording)
+                summary = play_game(seed, player, out_dir, ascension, perms, power_notes, wording, potion_step)
         except Exception as e:
             with lock, open(out_dir / "errors.jsonl", "a") as fh:
                 fh.write(json.dumps({"seed": seed, "error": repr(e), "trace": traceback.format_exc()}) + "\n")
@@ -69,6 +70,8 @@ def main():
     ap.add_argument("--wording", choices=sorted(P.INSTRUCTIONS), default="main",
                     help="text players: wording of the two questions")
     ap.add_argument("--workers", default="", help="overrides, e.g. nimble=1,heart1=8")
+    ap.add_argument("--potion-step", action="store_true",
+                    help="text players: ask about potions first each turn (the potion round, not the benchmark)")
     args = ap.parse_args()
     workers = dict(DEFAULT_WORKERS)
     for kv in filter(None, args.workers.split(",")):
@@ -79,7 +82,7 @@ def main():
     # Players run side by side so the CPU-bound baselines overlap with the GPU-bound models.
     with cf.ThreadPoolExecutor(len(players)) as pool:
         futures = [pool.submit(run_player, p, seeds, out, workers.get(p, 2), args.ascension, args.mcts_sims,
-                               args.perms, args.power_notes, args.wording)
+                               args.perms, args.power_notes, args.wording, args.potion_step)
                    for p in players]
         for f in futures:
             f.result()
