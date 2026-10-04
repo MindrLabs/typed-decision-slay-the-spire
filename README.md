@@ -6,6 +6,8 @@ This repository has a typed-decision model make every choice of a Slay the Spire
 
 We served Bespoke Nimble-9B and three Convai Laya checkpoints with model-compose on an NVIDIA DGX Spark and had each play the same 200 seeds as the Ironclad at ascension 0, reading identical text. We compared them twice: zero-shot, and after fine-tuning Nimble-9B and Laya english once on the same decisions of a search bot. Both rounds and their analyses were pre-registered before they ran. Every number comes from the runs; nothing was judged by hand. We measured on the DGX Spark only.
 
+A follow-up on the potions the fine-tuned models left unused was not pre-registered and is reported as exploratory in section 3.6.
+
 ## Contents
 
 - [Quick Start](#quick-start)
@@ -18,6 +20,7 @@ We served Bespoke Nimble-9B and three Convai Laya checkpoints with model-compose
   - [3.3 The same elite fight](#33-the-same-elite-fight)
   - [3.4 Rewording the question](#34-rewording-the-question)
   - [3.5 After fine-tuning](#35-after-fine-tuning)
+  - [3.6 Potions, outside the pre-registration](#36-potions-outside-the-pre-registration)
 - [4 Recommendations](#4-recommendations)
 - [5 Limitations and what we did not measure](#5-limitations-and-what-we-did-not-measure)
   - [What the intervals cover](#what-the-intervals-cover)
@@ -39,6 +42,8 @@ A typed-decision model takes a text and a list of allowed answers and returns on
 | `laya-multilingual` | the same repository, multilingual checkpoint | 322M | Same |
 | `nimble-ft` | [`MindrLabs/sts-arena-nimble-ft`](https://huggingface.co/MindrLabs/sts-arena-nimble-ft): Nimble-9B's adapter trained one more epoch on this game | 9B | Same as Nimble-9B |
 | `laya-english-ft` | [`MindrLabs/sts-arena-laya-english-ft`](https://huggingface.co/MindrLabs/sts-arena-laya-english-ft): Laya english fully fine-tuned for one epoch on this game | 421M | Same as Laya english |
+| `laya-english-ft4` | [`MindrLabs/sts-arena-laya-english-ft4`](https://huggingface.co/MindrLabs/sts-arena-laya-english-ft4): Laya english trained further on its own play, with potions asked as a separate question (section 3.6) | 421M | Same as Laya english; play it with `--potion-step` |
+| `nimble-ft4` | [`MindrLabs/sts-arena-nimble-ft4`](https://huggingface.co/MindrLabs/sts-arena-nimble-ft4): Nimble-9B's round-2 adapter trained further on those states (section 3.6) | 9B | Same as Nimble-9B; play it with `--potion-step` |
 
 ## Demo
 
@@ -113,6 +118,7 @@ uv run python scripts/stats.py results/final --refs results/main --single result
 uv run python scripts/stats_round2.py --out reports/round2
 uv run python scripts/sensitivity.py
 uv run python scripts/charts.py
+uv run python scripts/stats_potion.py          # section 3.6
 ```
 
 Example request:
@@ -138,6 +144,7 @@ It returns `{"decision": {"pick": "A"}, "fields": {"pick": {"scores": {"A": 0.62
 3. Put in the same act 1 elite fight with the same deck, Nimble-9B and Laya english won about equally often (84 and 80 of 90). The gap between them builds up over a run's other choices, not inside one fight.
 4. Fine-tuned once on the same 39,884 decisions of the search bot, Laya english rose 6.7 floors (10.4 to 17.1) and Nimble-9B 5.4 (14.1 to 19.5). Fine-tuned Nimble-9B still led by 2.4 floors, but it also trained 17 times longer (7.9 h against 0.5 h), so that lead mixes the model with its training budget. Both then picked the same action in every order in about 80% of decisions. Neither won a run.
 5. Laya answers in a sixth of the time and memory: 24 ms per request and about 3 GB on the DGX Spark, against 146 ms and 19 GB for Nimble-9B.
+6. *(exploratory)* The fine-tuned models still died with potions unused. Training Laya english further on its own play, with potions asked as a separate question, raised its mean floor on 50 check seeds from 16.7 to 28.7 and cut the lost games that ended with a usable potion from 98% to 30%; Nimble-9B went from 20.5 to 26.6, with 16% of its lost games ending that way. In the real game Nimble-9B beat the act 3 boss once in 8 matches. Section 3.6 says what this does not show.
 
 Table 1: Summary by model (200 seeds each, 4 option orders per decision)
 
@@ -202,6 +209,7 @@ Table 4: Results by question
 | Where does the gap come from? | From the run as a whole. In the same elite fight with the same deck the two are about even |
 | Does the ranking hold if the question is reworded? | Nimble-9B stays first. Laya typed-decisions loses its lead over english, and the two tie |
 | How much does one round of fine-tuning help? | 5 to 7 floors for both. The smaller Laya gains more, Nimble-9B stays ahead |
+| *(exploratory)* Can the fine-tuned models learn to use potions? | Mostly. Lost games that ended with a usable potion fell from 98% to 30% (Laya english) and 16% (Nimble-9B). Which change did it is not known |
 
 ### 3.1 How far each model gets
 
@@ -301,12 +309,44 @@ Nimble-9B's training took 17 times as long as Laya english's on the same DGX Spa
 - Half of fine-tuned Nimble-9B's runs pass act 1, and its best run reached floor 50. heart1 averages 53.
 - *(exploratory)* Both fine-tuned models take the gold and relic of every reward screen. Zero-shot, Nimble-9B took the gold 77% of the time and Laya english 29%.
 
+### 3.6 Potions, outside the pre-registration
+
+*(exploratory; the full account is in [docs/potion-round.md](docs/potion-round.md))*
+
+After round 2 both fine-tuned models took every reward and bought in shops, but 98% of the games each lost ended with a potion they could still have used. They used 0.3 to 0.6 potions a game; heart1, whose moves they learned, uses about 10. The training data had few examples of drinking (heart1 drank in 2.8% of the battle decisions that offered a potion), the models could not tell when to, and the majority over 4 orders dropped the votes for a potion that remained.
+
+We changed four things: potions are asked about on their own at the start of each turn (`--potion-step`), the fight's kind and floor are in the state, the training target is half heart1's move and half its search distribution, and the models were trained further on the states they reach themselves (two rounds of DAgger: the model plays, heart1 labels every state). Laya english was trained twice that way (FT3, FT4) and Nimble-9B once, on the same states (FT4). The registered runs are untouched.
+
+Table 7a: Check games, seeds 201-250 (4 option orders, potion step on for FT3 and FT4)
+
+| Player | Mean floor | Same-seed difference [95% CI] | Potions per game | Lost games with a usable potion left | Wins | Check |
+|---|---|---|---|---|---|---|
+| Laya english, round 2 (start) | 16.7 | | 0.30 | 98% | 0 | |
+| Laya english FT3 (round A) | 23.5 | +6.8 [+4.1, +9.6] | 3.72 | 74% | 0 | not passed |
+| **Laya english FT4** (round B) | **28.7** | **+12.0 [+8.5, +15.7]** | **6.04** | **30%** | **3** | **passed** |
+| Nimble-9B, round 2 (start) | 20.5 | | 0.58 | 98% | 0 | |
+| **Nimble-9B FT4** | **26.6** | **+6.1 [+2.6, +9.6]** | **6.16** | **16%** | 0 | not passed |
+
+The check was fixed before any of these games: potions per game at least 3, lost games with a usable potion left at most 50%, mean floor not lower, no relic or gold left behind, shop purchase rate no more than 10 points lower. FT3 missed the potion share and left one relic behind. Nimble-9B FT4 met every part but one: on seed 212 it left the relic Smiling Mask behind. We report it as not passed. `scripts/stats_potion.py` recomputes this table, and the columns not shown here, from `results/potion`.
+
+Table 7b: Real game, seeds 1-8, `nimble-ft4` against `laya-english-ft4` (potion step on; 1 draw)
+
+| | Mean floor | Wins | Matches won | Potions per game | Lost games with a usable potion left | Reward screens left with a relic or gold |
+|---|---|---|---|---|---|---|
+| Nimble-9B FT4 | 29.9 | 1 (seed 5, floor 51, act 3 boss) | 6 | 6.1 | 1 of 7 | 0 |
+| Laya english FT4 | 23.6 | 0 | 1 | 4.9 | 3 of 8 | 0 |
+
+- **What it shows**: Training on the models' own states, with the search bot's distribution as the target, took away most of the unused potions and raised the mean floor by 12.0 (Laya english) and 6.1 (Nimble-9B) on the same seeds. In the real game both kept taking every reward and shop item, and Nimble-9B FT4 beat the act 3 boss once, the only win in any of our live matches.
+- **What it does not show**: which change did it. The potion step, the fight line, the visit targets and the extra rounds were never taken apart, and the potion step was chosen in only 1% to 2% of its questions: about 90% of the potions drunk were drunk in ordinary battle decisions. The check seeds were also the gate in round 2 (no training game used them). Eight real-game matches cannot rank the two models, and the order there (Nimble-9B ahead) is the reverse of the check games. The real-game counts come from decision logs that quote the game text, so `results/` cannot recompute them.
+- **Weights**: like round 2's, in private repositories, because the training data quote the game text. FT2 and FT3 are intermediate Laya models and are not published.
+
 ## 4 Recommendations
 
 - **No training data**: Use Nimble-9B. It reads the options well enough to play a long game it was not trained on; Laya, as Convai itself says, is close to random zero-shot on an unfamiliar task.
 - **Tight latency or memory, and data to train on**: Fine-tune Laya english. One epoch on 40k examples (27 minutes on the DGX Spark) took it from 10.4 to 17.1 floors, close to fine-tuned Nimble-9B (19.5), at a sixth of the time per request and memory.
 - **Before trusting a typed-decision model**: Ask a sample of decisions with the options in several orders. Low agreement means the model is picking by position, as Laya multilingual does here; its plain score can look better than its reading.
 - **Multilingual Laya**: Do not use it on English tasks like this one without fine-tuning.
+- **After fine-tuning**: Count what the model leaves undone, not only its score. Ours took every reward and still died with potions unused; training further on its own play, with potions asked as a separate question and the search bot's distribution as the target, removed most of it (section 3.6, exploratory; which part mattered is not known).
 - **Reproducing a run**: Run `scripts/setup-runtimes.sh` before `model-compose up`. Fresh model-compose environments get newer packages, and a newer triton alone is enough to flip some of Nimble-9B's near-tie votes.
 
 ## 5 Limitations and what we did not measure
@@ -331,6 +371,7 @@ Table 8: Changes from the pre-registrations
 | 2 | The training set was to be subsampled to 40,000 decisions | Data generation, 2026-09-27 | Only 39,884 decisions existed | All were used |
 | 2 | model-compose PR #27 was called a draft (r2) | 2026-09-28, after all runs | As in round 1 | None |
 | This repository | The models are served by model-compose 0.4.113 instead of `e8ce0d4b` (+ `3f31d447` in round 2), and the runner talks to one server | 2026-10-01 | Public release | Seed 1 replays every published decision of all six models. `nimble-ft` needs PR #29 for decisions over 26 options (Other limitations) |
+| Potion round | Added after both rounds, not pre-registered: the methods were chosen after reading the round-2 logs, the pass/fail check before its check games | 2026-10-03 | The fine-tuned models died with potions unused | None on the registered results; exploratory, section 3.6 |
 
 ### How much the software environment matters
 
@@ -371,6 +412,7 @@ Losing state text is rare. Cutting long option texts is not, and it grows for fi
 - Zero-shot Laya is used outside what Convai claims for it, and typed-decisions was fine-tuned for business workflows, not games. The models also differ about 20-fold in size (9B against 421M and 322M).
 - Fine-tuning used one method per model, the makers' published settings and one epoch, with 17 times more training time for Nimble-9B. We do not know how far either model goes with other methods, more epochs or more data. LoRA, which Nimble-9B uses, generally needs more epochs than full fine-tuning to peak.
 - `nimble-ft` asked 12 decisions with more than 26 options over the 200 seeds. model-compose 0.4.113 refuses those; the published run used a local patch that builds such prompts with the checkpoint's own `serving_schema`, which [hanyeol/model-compose#29](https://github.com/hanyeol/model-compose/pull/29) (open as of 2026-10-01) brings to model-compose. Until it is released, `nimble-ft` needs model-compose from that pull request. With it, 23 of 23 decisions we checked picked as the published server did; we did not replay whole games with it.
+- `nimble-ft4` asked decisions with up to 29 options on seeds 208, 216 and 219. model-compose 0.4.113 refuses more than 26, so those three seeds need the same patch as `nimble-ft`; the other 47 replay on 0.4.113.
 - We measured only on the DGX Spark, a machine shared with other jobs. Times are with one model loaded at a time. RTX-class GPUs, Macs and Laya's TileLang fast path (x86-64 only) were not tried. On other hardware a decision-for-decision replay is not expected; `scripts/env-report.sh` prints what a rerun should report.
 - The search bots are not competitors: they search the simulator, which no text model can.
 - The input format is ours and shared by all models. Section 3.4 shows the Laya models' order depends on the wording; neither maker's own recommended format was tried.
